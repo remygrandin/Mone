@@ -1,0 +1,49 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Mone.Contracts/Mone.Contracts.csproj" />
+    <Project Path="src/Mone.Infrastructure/Mone.Infrastructure.csproj" />
+    <Project Path="src/Mone.PluginEngine/Mone.PluginEngine.csproj" />
+    <Project Path="src/Mone.Messaging/Mone.Messaging.csproj" />
+    <Project Path="src/Mone.ProbeExecutor/Mone.ProbeExecutor.csproj" />
+    <Project Path="src/Mone.CheckerEngine/Mone.CheckerEngine.csproj" />
+    <Project Path="src/Mone.Api/Mone.Api.csproj" />
+    <Project Path="src/Mone.AlertEngine/Mone.AlertEngine.csproj" />
+    <Project Path="src/Mone.Dashboard/Mone.Dashboard.csproj" />
+  </Folder>
+  <Folder Name="/plugins/probes/">
+    <Project Path="../Mone-Plugins/probes/Mone.Plugins.Probes.Ping/Mone.Plugins.Probes.Ping.csproj" />
+    <Project Path="../Mone-Plugins/probes/Mone.Plugins.Probes.Https/Mone.Plugins.Probes.Https.csproj" />
+    <Project Path="../Mone-Plugins/probes/Mone.Plugins.Probes.Webhook/Mone.Plugins.Probes.Webhook.csproj" />
+    <Project Path="../Mone-Plugins/probes/Mone.Plugins.Probes.Syslog/Mone.Plugins.Probes.Syslog.csproj" />
+    <Project Path="../Mone-Plugins/probes/Mone.Plugins.Probes.SnmpTrap/Mone.Plugins.Probes.SnmpTrap.csproj" />
+  </Folder>
+  <Folder Name="/plugins/checkers/">
+    <Project Path="../Mone-Plugins/checkers/Mone.Plugins.Checkers.ThresholdChecker/Mone.Plugins.Checkers.ThresholdChecker.csproj" />
+    <Project Path="../Mone-Plugins/checkers/Mone.Plugins.Checkers.ValueChecker/Mone.Plugins.Checkers.ValueChecker.csproj" />
+  </Folder>
+  <Folder Name="/plugins/notifications/">
+    <Project Path="../Mone-Plugins/notifications/Mone.Plugins.Notifications.Email/Mone.Plugins.Notifications.Email.csproj" />
+    <Project Path="../Mone-Plugins/notifications/Mone.Plugins.Notifications.Slack/Mone.Plugins.Notifications.Slack.csproj" />
+    <Project Path="../Mone-Plugins/notifications/Mone.Plugins.Notifications.Teams/Mone.Plugins.Notifications.Teams.csproj" />
+    <Project Path="../Mone-Plugins/notifications/Mone.Plugins.Notifications.Webhook/Mone.Plugins.Notifications.Webhook.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Mone.PluginEngine.Tests/Mone.PluginEngine.Tests.csproj" />
+    <Project Path="tests/Mone.Messaging.Tests/Mone.Messaging.Tests.csproj" />
+    <Project Path="tests/Mone.Infrastructure.Tests/Mone.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Mone.Plugins.Tests/Mone.Plugins.Tests.csproj" />
+    <Project Path="tests/Mone.CheckerEngine.Tests/Mone.CheckerEngine.Tests.csproj" />
+    <Project Path="tests/Mone.Api.Tests/Mone.Api.Tests.csproj" />
+    <Project Path="tests/Mone.AlertEngine.Tests/Mone.AlertEngine.Tests.csproj" />
+    <Project Path="tests/Mone.ProbeExecutor.Tests/Mone.ProbeExecutor.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/TestPlugins/">
+    <Project Path="tests/TestPlugins/TestProbePlugin/TestProbePlugin.csproj" />
+    <Project Path="tests/TestPlugins/TestCheckerPlugin/TestCheckerPlugin.csproj" />
+    <Project Path="tests/TestPlugins/TestNotificationPlugin/TestNotificationPlugin.csproj" />
+    <Project Path="tests/TestPlugins/TestProbePluginV2/TestProbePluginV2.csproj" />
+    <Project Path="tests/TestPlugins/TestPluginWithJsonV12/TestPluginWithJsonV12.csproj" />
+    <Project Path="tests/TestPlugins/TestPluginWithJsonV13/TestPluginWithJsonV13.csproj" />
+    <Project Path="tests/TestPlugins/MockProbePlugin/MockProbePlugin.csproj" />
+  </Folder>
+</Solution>

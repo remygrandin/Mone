@@ -1,0 +1,56 @@
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudSelect T="string" @bind-Value="Model.PluginId" Label="Plugin" Required="true"
+                       RequiredError="Plugin is required" Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem Value="@("slack")">Slack</MudSelectItem>
+                <MudSelectItem Value="@("teams")">Teams</MudSelectItem>
+                <MudSelectItem Value="@("webhook")">Webhook</MudSelectItem>
+            </MudSelect>
+
+            <MudTextField @bind-Value="Model.ConfigJson" Label="Configuration JSON" Variant="Variant.Outlined"
+                          Lines="5" HelperText="Raw JSON configuration for the plugin" Class="mb-3" />
+
+            <MudSwitch @bind-Value="Model.Enabled" Label="Enabled" Color="Color.Primary" Class="mb-3" />
+
+            <MudTextField @bind-Value="Model.Scope" Label="Scope" Variant="Variant.Outlined"
+                          HelperText="e.g. tag name or host group (optional)" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">
+            @(IsEdit ? "Save" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public FormModel Model { get; set; } = new();
+    [Parameter] public bool IsEdit { get; set; }
+
+    private MudForm _form = null!;
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_form.IsValid)
+            return;
+
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class FormModel
+    {
+        public string PluginId { get; set; } = "slack";
+        public string ConfigJson { get; set; } = "";
+        public bool Enabled { get; set; } = true;
+        public string Scope { get; set; } = "";
+    }
+}

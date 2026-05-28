@@ -1,0 +1,145 @@
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg17
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mone_dev}
+      POSTGRES_DB: mone
+    volumes:
+      - pgdata:/home/postgres/pgdata
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nats:
+    image: nats:2.11-alpine
+    command: ["--js", "--sd", "/data", "-m", "8222"]
+    volumes:
+      - natsdata:/data
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: ..
+      dockerfile: Mone/src/Mone.Api/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
+      ConnectionStrings__Nats: nats://nats:4222
+      Jwt__Key: ${JWT_KEY:-ThisIsADevelopmentKeyThatIsAtLeast32BytesLong!}
+      Jwt__Issuer: Mone
+      Jwt__Audience: Mone
+      Oidc__Enabled: ${OIDC_ENABLED:-false}
+      Oidc__Authority: ${OIDC_AUTHORITY:-}
+      Oidc__ClientId: ${OIDC_CLIENT_ID:-}
+      Oidc__ClientSecret: ${OIDC_CLIENT_SECRET:-}
+      Oidc__DisplayName: ${OIDC_DISPLAY_NAME:-SSO}
+      Ldap__Enabled: ${LDAP_ENABLED:-false}
+      Ldap__Host: ${LDAP_HOST:-}
+      Ldap__Port: ${LDAP_PORT:-389}
+      Ldap__UseSsl: ${LDAP_USE_SSL:-false}
+      Ldap__BaseDn: ${LDAP_BASE_DN:-}
+      Ldap__UserSearchFilter: ${LDAP_USER_SEARCH_FILTER:-}
+      Ldap__BindDn: ${LDAP_BIND_DN:-}
+      Ldap__BindPassword: ${LDAP_BIND_PASSWORD:-}
+      Ldap__EmailAttribute: ${LDAP_EMAIL_ATTRIBUTE:-mail}
+      Ldap__DisplayNameAttribute: ${LDAP_DISPLAY_NAME_ATTRIBUTE:-displayName}
+      Api__PluginDirectory: /app/plugins
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof dotnet || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  probe-executor:
+    build:
+      context: ..
+      dockerfile: Mone/src/Mone.ProbeExecutor/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
+      ConnectionStrings__Nats: nats://nats:4222
+      ProbeExecutor__PluginDirectory: /app/plugins
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    ports:
+      - "162:162/udp"
+      - "514:514/udp"
+    cap_add:
+      - NET_RAW
+    healthcheck:
+      test: ["CMD-SHELL", "pidof dotnet || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  checker-engine:
+    build:
+      context: ..
+      dockerfile: Mone/src/Mone.CheckerEngine/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
+      ConnectionStrings__Nats: nats://nats:4222
+      CheckerEngine__PluginDirectory: /app/plugins
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof dotnet || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  alert-engine:
+    build:
+      context: ..
+      dockerfile: Mone/src/Mone.AlertEngine/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
+      ConnectionStrings__Nats: nats://nats:4222
+      AlertEngine__PluginDirectory: /app/plugins
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pidof dotnet || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:
+  natsdata:

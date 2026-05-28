@@ -1,0 +1,148 @@
+@using Mone.Dashboard.Models
+
+@foreach (var field in Fields.Where(f => !f.IsGlobal))
+{
+    <div class="mb-3">
+        @switch (field.FieldType)
+        {
+            case ConfigFieldTypeEnum.String when field.Key == "MetricKey" && MetricKeySuggestions.Length > 0:
+                <MudSelect T="string"
+                           Label="@field.DisplayName"
+                           HelperText="@field.Description"
+                           Value="@GetValue(field.Key)"
+                           ValueChanged="@(v => SetValue(field.Key, v))"
+                           Required="@field.Required">
+                    @foreach (var key in MetricKeySuggestions)
+                    {
+                        <MudSelectItem Value="@key">@key</MudSelectItem>
+                    }
+                </MudSelect>
+                break;
+
+            case ConfigFieldTypeEnum.String:
+                <MudTextField T="string"
+                              Label="@field.DisplayName"
+                              HelperText="@field.Description"
+                              Value="@GetValue(field.Key)"
+                              ValueChanged="@(v => SetValue(field.Key, v))"
+                              Required="@field.Required"
+                              Placeholder="@field.DefaultValue" />
+                break;
+
+            case ConfigFieldTypeEnum.Integer:
+                <MudNumericField T="int?"
+                                 Label="@field.DisplayName"
+                                 HelperText="@field.Description"
+                                 Value="@GetIntValue(field.Key)"
+                                 ValueChanged="@(v => SetValue(field.Key, v?.ToString() ?? string.Empty))"
+                                 Required="@field.Required"
+                                 Min="@((int?)(field.ValidationRules?.Min))"
+                                 Max="@((int?)(field.ValidationRules?.Max))" />
+                break;
+
+            case ConfigFieldTypeEnum.Double:
+                <MudNumericField T="double?"
+                                 Label="@field.DisplayName"
+                                 HelperText="@field.Description"
+                                 Value="@GetDoubleValue(field.Key)"
+                                 ValueChanged="@(v => SetValue(field.Key, v?.ToString() ?? string.Empty))"
+                                 Required="@field.Required"
+                                 Min="@field.ValidationRules?.Min"
+                                 Max="@field.ValidationRules?.Max" />
+                break;
+
+            case ConfigFieldTypeEnum.Boolean:
+                <MudSwitch T="bool"
+                           Label="@field.DisplayName"
+                           Color="Color.Primary"
+                           Checked="@GetBoolValue(field.Key)"
+                           CheckedChanged="@((bool v) => SetValue(field.Key, v.ToString().ToLowerInvariant()))" />
+                break;
+
+            case ConfigFieldTypeEnum.Choice:
+                <MudSelect T="string"
+                           Label="@field.DisplayName"
+                           HelperText="@field.Description"
+                           Value="@GetValue(field.Key)"
+                           ValueChanged="@(v => SetValue(field.Key, v))"
+                           Required="@field.Required">
+                    @if (field.Choices is not null)
+                    {
+                        @foreach (var choice in field.Choices)
+                        {
+                            <MudSelectItem Value="@choice">@choice</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+                break;
+
+            case ConfigFieldTypeEnum.Secret:
+                <MudTextField T="string"
+                              Label="@field.DisplayName"
+                              HelperText="@field.Description"
+                              Value="@GetValue(field.Key)"
+                              ValueChanged="@(v => SetValue(field.Key, v))"
+                              Required="@field.Required"
+                              InputType="@(_secretVisible.Contains(field.Key) ? InputType.Text : InputType.Password)"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@(_secretVisible.Contains(field.Key) ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                              OnAdornmentClick="@(() => ToggleSecretVisibility(field.Key))" />
+                break;
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ConfigFieldModel> Fields { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public Dictionary<string, string> Values { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<Dictionary<string, string>> ValuesChanged { get; set; }
+
+    [Parameter]
+    public string[] MetricKeySuggestions { get; set; } = [];
+
+    private readonly HashSet<string> _secretVisible = new();
+
+    private string GetValue(string key)
+    {
+        if (Values.TryGetValue(key, out var val) && !string.IsNullOrEmpty(val))
+            return val;
+
+        var field = Fields.FirstOrDefault(f => f.Key == key);
+        return field?.DefaultValue ?? string.Empty;
+    }
+
+    private int? GetIntValue(string key)
+    {
+        var raw = GetValue(key);
+        return int.TryParse(raw, out var v) ? v : null;
+    }
+
+    private double? GetDoubleValue(string key)
+    {
+        var raw = GetValue(key);
+        return double.TryParse(raw, out var v) ? v : null;
+    }
+
+    private bool GetBoolValue(string key)
+    {
+        var raw = GetValue(key);
+        return bool.TryParse(raw, out var v) && v;
+    }
+
+    private async Task SetValue(string key, string? value)
+    {
+        Values[key] = value ?? string.Empty;
+        await ValuesChanged.InvokeAsync(Values);
+    }
+
+    private void ToggleSecretVisibility(string key)
+    {
+        if (!_secretVisible.Add(key))
+            _secretVisible.Remove(key);
+    }
+}

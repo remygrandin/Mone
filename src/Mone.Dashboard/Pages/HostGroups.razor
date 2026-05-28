@@ -1,0 +1,248 @@
+@page "/groups"
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Services
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h4" Class="mb-4">Host Groups</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudToolBar Dense="true">
+                <MudText Typo="Typo.h6">Groups</MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateDialog">Add Group</MudButton>
+            </MudToolBar>
+
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Class="mt-4" />
+            }
+            else if (_treeItems.Count == 0)
+            {
+                <MudText Class="mt-4" Color="Color.Secondary">No groups yet. Create one to get started.</MudText>
+            }
+            else
+            {
+                <MudTreeView T="TreeNode" Items="_treeItems" Class="mt-4" ExpandOnClick="true"
+                             SelectedValueChanged="OnTreeNodeSelected">
+                    <ItemTemplate>
+                        <MudTreeViewItem T="TreeNode" @bind-Expanded="@context.Expanded"
+                                         Value="@context.Value" Text="@context.Text"
+                                         Icon="@context.Icon" Items="@context.Children" />
+                    </ItemTemplate>
+                </MudTreeView>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="7">
+        @if (_selectedGroup is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudToolBar Dense="true">
+                    <MudText Typo="Typo.h6">@_selectedGroup.Name</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="OpenEditDialog" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="DeleteGroup" />
+                </MudToolBar>
+
+                @if (!string.IsNullOrWhiteSpace(_selectedGroup.Description))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2 mb-4" Color="Color.Secondary">@_selectedGroup.Description</MudText>
+                }
+
+                <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Members</MudText>
+
+                @if (_selectedGroupDetail?.Members.Length > 0)
+                {
+                    <MudSimpleTable Dense="true" Hover="true" Class="mt-2">
+                        <thead>
+                            <tr>
+                                <th>Host Name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var member in _selectedGroupDetail.Members)
+                            {
+                                <tr>
+                                    <td>@member.HostName</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                    <MudText Class="mt-2" Color="Color.Secondary">No members in this group.</MudText>
+                }
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Color="Color.Secondary">Select a group from the tree to view details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool _loading = true;
+    private List<TreeItemData<TreeNode>> _treeItems = new();
+    private TreeNode? _selectedNode;
+    private HostGroupResponse? _selectedGroup;
+    private HostGroupDetailResponse? _selectedGroupDetail;
+    private HostGroupResponse[] _allGroups = [];
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadGroups();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MONE-GROUP] LoadGroups failed: {ex.Message}");
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadGroups()
+    {
+        _allGroups = await Api.GetHostGroupsAsync();
+        Console.WriteLine($"[MONE-GROUP] Loaded {_allGroups.Length} groups");
+        foreach (var g in _allGroups)
+            Console.WriteLine($"[MONE-GROUP]   - {g.Name} (Id={g.Id}, Parent={g.ParentGroupId})");
+
+        _treeItems = BuildTree(_allGroups);
+        Console.WriteLine($"[MONE-GROUP] Built {_treeItems.Count} root tree items");
+    }
+
+    private List<TreeItemData<TreeNode>> BuildTree(HostGroupResponse[] groups)
+    {
+        var nodes = groups.ToDictionary(g => g.Id, g => new TreeNode(g));
+        var childMap = new Dictionary<Guid, List<TreeNode>>();
+
+        foreach (var g in groups)
+        {
+            if (g.ParentGroupId is { } pid && nodes.ContainsKey(pid))
+            {
+                if (!childMap.ContainsKey(pid)) childMap[pid] = new();
+                childMap[pid].Add(nodes[g.Id]);
+            }
+        }
+
+        List<TreeItemData<TreeNode>> ToTreeItemData(IEnumerable<TreeNode> items)
+        {
+            return items.Select(n => new TreeItemData<TreeNode>
+            {
+                Value = n,
+                Text = n.Text,
+                Icon = Icons.Material.Filled.Folder,
+                Children = childMap.TryGetValue(n.Group.Id, out var children)
+                    ? ToTreeItemData(children) : null
+            }).ToList();
+        }
+
+        var roots = groups.Where(g => g.ParentGroupId is null || !nodes.ContainsKey(g.ParentGroupId.Value))
+            .Select(g => nodes[g.Id]);
+        return ToTreeItemData(roots);
+    }
+
+    private async Task OnTreeNodeSelected(TreeNode? node)
+    {
+        _selectedNode = node;
+        if (node?.Group is { } g)
+        {
+            _selectedGroup = g;
+            _selectedGroupDetail = await Api.GetHostGroupAsync(g.Id);
+        }
+        else
+        {
+            _selectedGroup = null;
+            _selectedGroupDetail = null;
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Groups"] = _allGroups,
+            ["ParentGroupId"] = (Guid?)null,
+        };
+        var dialog = await DialogService.ShowAsync<HostGroupDialog>("Create Group", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: CreateHostGroupRequest req })
+        {
+            await Api.CreateHostGroupAsync(req);
+            await LoadGroups();
+            Snackbar.Add("Group created.", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog()
+    {
+        if (_selectedGroup is null) return;
+        var parameters = new DialogParameters
+        {
+            ["Groups"] = _allGroups.Where(g => g.Id != _selectedGroup.Id).ToArray(),
+            ["EditName"] = _selectedGroup.Name,
+            ["EditDescription"] = _selectedGroup.Description,
+            ["ParentGroupId"] = _selectedGroup.ParentGroupId,
+        };
+        var dialog = await DialogService.ShowAsync<HostGroupDialog>("Edit Group", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: CreateHostGroupRequest req })
+        {
+            await Api.UpdateHostGroupAsync(_selectedGroup.Id, new UpdateHostGroupRequest(req.Name, req.Description, req.ParentGroupId));
+            await LoadGroups();
+            _selectedGroupDetail = await Api.GetHostGroupAsync(_selectedGroup.Id);
+            Snackbar.Add("Group updated.", Severity.Success);
+        }
+    }
+
+    private async Task DeleteGroup()
+    {
+        if (_selectedGroup is null) return;
+        var confirm = await DialogService.ShowMessageBox("Delete Group",
+            $"Are you sure you want to delete '{_selectedGroup.Name}'?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm == true)
+        {
+            try
+            {
+                await Api.DeleteHostGroupAsync(_selectedGroup.Id);
+                _selectedGroup = null;
+                _selectedGroupDetail = null;
+                _selectedNode = null;
+                await LoadGroups();
+                Snackbar.Add("Group deleted.", Severity.Success);
+            }
+            catch (HttpRequestException ex)
+            {
+                Snackbar.Add($"Cannot delete: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+
+
+    public class TreeNode
+    {
+        public HostGroupResponse Group { get; }
+        public string Text => Group.Name;
+
+        public TreeNode(HostGroupResponse group) => Group = group;
+
+        public override bool Equals(object? obj) => obj is TreeNode other && other.Group.Id == Group.Id;
+        public override int GetHashCode() => Group.Id.GetHashCode();
+    }
+}

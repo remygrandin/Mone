@@ -1,0 +1,884 @@
+@page "/hosts/{Id:guid}"
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Shared
+@using System.Text.Json
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Host Detail - Mone</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+}
+else if (_host is null)
+{
+    <MudAlert Severity="Severity.Error">Host not found.</MudAlert>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => Nav.NavigateTo("/hosts"))" Class="mt-4">
+        Back to Hosts
+    </MudButton>
+}
+else
+{
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("/hosts"))" Class="mb-2">
+        Back to Hosts
+    </MudButton>
+
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h5">@_host.Name</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+                <MudChip T="string" Color="@(_host.Enabled ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(_host.Enabled ? "Enabled" : "Disabled")
+                </MudChip>
+            </CardHeaderActions>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Address</MudText>
+                    <MudText Typo="Typo.body1">@_host.Address</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Created</MudText>
+                    <MudText Typo="Typo.body1">@_host.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+                </MudItem>
+            </MudGrid>
+            @if (_host.Tags.Length > 0)
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mt-3">Tags</MudText>
+                <div class="mt-1">
+                    @foreach (var tag in _host.Tags)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="mr-1">@tag.Name</MudChip>
+                    }
+                </div>
+            }
+        </MudCardContent>
+        <MudCardActions>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.History"
+                       OnClick="@(() => Nav.NavigateTo($"/hosts/{Id}/status"))">
+                View Status History
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="OpenEditDialog" Class="ml-2">
+                Edit
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
+                       OnClick="OpenDeleteDialog" Class="ml-2">
+                Delete
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+
+    <MudExpansionPanels MultiExpansion="true">
+        <MudExpansionPanel Text="@($"Probe Assignments ({_effectiveProbes.Length})")" Expanded="true">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenAddProbeDialog" Class="mb-3" Size="Size.Small">
+                Add Probe
+            </MudButton>
+            @if (_effectiveProbes.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No probes assigned to this host.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Hover="true" Dense="true">
+                    <thead>
+                        <tr>
+                            <th>Plugin ID</th>
+                            <th>Schedule</th>
+                            <th>Enabled</th>
+                            <th>Source</th>
+                            <th>Override</th>
+                            <th>Last Run</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var probe in _effectiveProbes)
+                        {
+                            <tr>
+                                <td>@probe.ProbePluginId</td>
+                                <td><code>@probe.ScheduleCron</code></td>
+                                <td>
+                                    <MudIcon Icon="@(probe.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                             Color="@(probe.Enabled ? Color.Success : Color.Error)" Size="Size.Small" />
+                                </td>
+                                <td>
+                                    @if (probe.SourceType == "Direct")
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">Direct</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Icon="@Icons.Material.Filled.AccountTree">
+                                            @ResolveGroupName(probe.SourceGroupId)
+                                        </MudChip>
+                                    }
+                                </td>
+                                <td>
+                                    @if (probe.IsOverridden)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Edit">Overridden</MudChip>
+                                    }
+                                </td>
+                                <td>
+                                    @if (GetLastRun(probe.ProbePluginId) is { } lastRun)
+                                    {
+                                        <MudTooltip Text="@lastRun.ToString("yyyy-MM-dd HH:mm:ss")">
+                                            <MudText Typo="Typo.body2">@FormatRelativeTime(lastRun)</MudText>
+                                        </MudTooltip>
+                                    }
+                                    else
+                                    {
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">Never</MudText>
+                                    }
+                                </td>
+                                <td Style="white-space:nowrap;">
+                                    @if (probe.SourceType == "Direct")
+                                    {
+                                        <MudTooltip Text="Edit assignment">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                           OnClick="@(() => OpenEditProbeDialog(probe))" />
+                                        </MudTooltip>
+                                        <MudTooltip Text="Delete assignment">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                           OnClick="@(() => DeleteProbeAsync(probe.AssignmentId))" />
+                                        </MudTooltip>
+                                    }
+                                    else
+                                    {
+                                        <MudTooltip Text="Edit override">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                           OnClick="@(() => OpenProbeOverrideDialog(probe))" />
+                                        </MudTooltip>
+                                    }
+                                    @{
+                                        var isPassive = IsPassiveProbe(probe.ProbePluginId);
+                                    }
+                                    <MudTooltip Text="@(isPassive ? "Passive probes cannot be triggered manually" : "Trigger probe now")">
+                                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Color="Color.Success" Size="Size.Small"
+                                                       Disabled="@isPassive"
+                                                       OnClick="@(() => TriggerProbeAsync(probe.ProbePluginId))" />
+                                    </MudTooltip>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudExpansionPanel>
+
+        <MudExpansionPanel Text="@($"Checker Assignments ({_effectiveCheckers.Length})")" Expanded="true">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenAddCheckerDialog" Class="mb-3" Size="Size.Small">
+                Add Checker
+            </MudButton>
+            @if (_effectiveCheckers.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No checkers assigned to this host.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Hover="true" Dense="true">
+                    <thead>
+                        <tr>
+                            <th>Plugin ID</th>
+                            <th>Enabled</th>
+                            <th>Source</th>
+                            <th>Override</th>
+                            <th>Latest Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var checker in _effectiveCheckers)
+                        {
+                            <tr>
+                                <td>@checker.CheckerPluginId</td>
+                                <td>
+                                    <MudIcon Icon="@(checker.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                                             Color="@(checker.Enabled ? Color.Success : Color.Error)" Size="Size.Small" />
+                                </td>
+                                <td>
+                                    @if (checker.SourceType == "Direct")
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary">Direct</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Icon="@Icons.Material.Filled.AccountTree">
+                                            @ResolveGroupName(checker.SourceGroupId)
+                                        </MudChip>
+                                    }
+                                </td>
+                                <td>
+                                    @if (checker.IsOverridden)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Edit">Overridden</MudChip>
+                                    }
+                                </td>
+                                <td>
+                                    <MudChip T="string" Color="StatusColorHelper.ToMudColor(GetCheckerStatus(checker.CheckerPluginId))" Size="Size.Small">
+                                        @StatusColorHelper.ToLabel(GetCheckerStatus(checker.CheckerPluginId))
+                                    </MudChip>
+                                </td>
+                                <td style="white-space:nowrap;">
+                                    @if (checker.SourceType == "Direct")
+                                    {
+                                        <MudTooltip Text="Edit assignment">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                           OnClick="@(() => OpenEditCheckerDialog(checker))" />
+                                        </MudTooltip>
+                                        <MudTooltip Text="Delete assignment">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                           OnClick="@(() => DeleteCheckerAsync(checker.AssignmentId))" />
+                                        </MudTooltip>
+                                    }
+                                    else
+                                    {
+                                        <MudTooltip Text="Edit override">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                           OnClick="@(() => OpenCheckerOverrideDialog(checker))" />
+                                        </MudTooltip>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </MudExpansionPanel>
+
+        <MudExpansionPanel Text="@($"Probe Results ({_probeResults.Length})")" Expanded="true">
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <MudGrid>
+                    <MudItem xs="12" sm="8">
+                        <MudDateRangePicker @bind-DateRange="_probeResultDateRange" @bind-DateRange:after="LoadProbeResultsAsync"
+                                            Label="Date Range" Variant="Variant.Outlined" />
+                    </MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center gap-2">
+                        <MudTooltip Text="Refresh now">
+                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary"
+                                           OnClick="LoadProbeResultsAsync" Disabled="_probeResultsLoading" />
+                        </MudTooltip>
+                        <MudTooltip Text="@(AutoRefreshEnabled ? "Disable auto-refresh" : "Enable auto-refresh (10s)")">
+                            <MudToggleIconButton @bind-Toggled="AutoRefreshEnabled"
+                                                 Icon="@Icons.Material.Outlined.Timer" ToggledIcon="@Icons.Material.Filled.Timer"
+                                                 Color="Color.Default" ToggledColor="Color.Primary"
+                                                 Size="Size.Medium" />
+                        </MudTooltip>
+                        @if (AutoRefreshEnabled)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Primary">Auto-refresh on</MudText>
+                        }
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            @if (_probeResultsLoading)
+            {
+                <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-4" />
+            }
+            else if (_probeResults.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No probe results found for the selected date range.</MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_probeResults" Dense="true" Hover="true" Striped="true"
+                          RowsPerPage="@_pageSize" T="ProbeResultResponse">
+                    <ToolBarContent>
+                        <MudSelect T="int" Value="@_pageSize" ValueChanged="@(v => _pageSize = v)"
+                                   Label="Page size" Style="max-width:120px;" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="10">10</MudSelectItem>
+                            <MudSelectItem Value="25">25</MudSelectItem>
+                            <MudSelectItem Value="50">50</MudSelectItem>
+                            <MudSelectItem Value="100">100</MudSelectItem>
+                        </MudSelect>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh Style="width:50px;"></MudTh>
+                        <MudTh>Timestamp</MudTh>
+                        <MudTh>Probe</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Summary</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            @if (!string.IsNullOrEmpty(context.MetadataJson))
+                            {
+                                <MudIconButton Icon="@(_expandedResults.Contains(context) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                               Size="Size.Small" OnClick="@(() => ToggleMetadata(context))" />
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Timestamp">
+                            <MudTooltip Text="@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")">
+                                @context.Timestamp.ToString("MM-dd HH:mm:ss")
+                            </MudTooltip>
+                        </MudTd>
+                        <MudTd DataLabel="Probe">@context.ProbeId</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Color="StatusColorHelper.ToMudColor(context.Status)" Size="Size.Small">
+                                @StatusColorHelper.ToLabel(context.Status)
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Summary">@context.Summary</MudTd>
+                    </RowTemplate>
+                    <ChildRowContent>
+                        @if (_expandedResults.Contains(context))
+                        {
+                            <MudTr>
+                                <td colspan="5" class="pa-4" style="background-color: var(--mud-palette-background-gray);">
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Metadata</MudText>
+                                    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Style="background: transparent;">
+                                        <thead>
+                                            <tr><th>Key</th><th>Value</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var kv in ParseMetadata(context.MetadataJson))
+                                            {
+                                                <tr><td><strong>@kv.Key</strong></td><td>@kv.Value</td></tr>
+                                            }
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </td>
+                            </MudTr>
+                        }
+                    </ChildRowContent>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            }
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+}
+
+@implements IDisposable
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private HostResponse? _host;
+    private EffectiveProbeAssignment[] _effectiveProbes = [];
+    private EffectiveCheckerAssignment[] _effectiveCheckers = [];
+    private OverrideResponse[] _probeOverrides = [];
+    private OverrideResponse[] _checkerOverrides = [];
+    private LoadedPluginModel[] _loadedPlugins = [];
+    private Dictionary<Guid, string> _groupNames = new();
+    private Dictionary<string, MonitoringStatus> _checkerStatusLookup = new();
+    private Dictionary<string, DateTimeOffset> _lastProbeRun = new();
+
+    private bool _probeResultsLoading;
+    private ProbeResultResponse[] _probeResults = [];
+    private int _pageSize = 25;
+    private DateRange _probeResultDateRange = new(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
+    private string[] _metricKeys = [];
+    private readonly HashSet<ProbeResultResponse> _expandedResults = new();
+
+    private Timer? _autoRefreshTimer;
+
+    private bool _autoRefreshEnabled;
+    private bool AutoRefreshEnabled
+    {
+        get => _autoRefreshEnabled;
+        set
+        {
+            _autoRefreshEnabled = value;
+            if (value)
+                _autoRefreshTimer = new Timer(async _ => await InvokeAsync(async () =>
+                {
+                    await LoadProbeResultsAsync();
+                    StateHasChanged();
+                }), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            else
+            {
+                _autoRefreshTimer?.Dispose();
+                _autoRefreshTimer = null;
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _host = await Api.GetHostAsync(Id);
+            if (_host is not null)
+            {
+                var effectiveTask = Api.GetEffectiveAssignmentsAsync(Id);
+                var overridesTask = Api.GetOverridesAsync(Id);
+                var statusHistoryTask = Api.GetStatusHistoryAsync(Id);
+                var pluginsTask = Api.GetLoadedPluginsAsync();
+                var groupsTask = Api.GetHostGroupsAsync();
+                var latestProbeTask = Api.GetLatestProbeResultsPerProbeAsync(Id);
+                var metricKeysTask = Api.GetMetricKeysAsync(Id);
+
+                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask); }
+                catch (Exception ex) { Console.WriteLine($"[MONE] Task.WhenAll partial failure: {ex.GetType().Name}: {ex.Message}"); }
+
+                if (effectiveTask.IsCompletedSuccessfully)
+                {
+                    var effective = effectiveTask.Result;
+                    _effectiveProbes = effective?.Probes ?? [];
+                    _effectiveCheckers = effective?.Checkers ?? [];
+                }
+
+                if (overridesTask.IsCompletedSuccessfully)
+                {
+                    var overrides = overridesTask.Result;
+                    _probeOverrides = overrides?.Probes ?? [];
+                    _checkerOverrides = overrides?.Checkers ?? [];
+                }
+
+                if (statusHistoryTask.IsCompletedSuccessfully)
+                {
+                    var statusHistory = statusHistoryTask.Result;
+                    _checkerStatusLookup = statusHistory
+                        .GroupBy(s => s.CheckerId)
+                        .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.Timestamp).First().CurrentStatus);
+                }
+
+                if (pluginsTask.IsCompletedSuccessfully)
+                    _loadedPlugins = pluginsTask.Result;
+
+                if (groupsTask.IsCompletedSuccessfully)
+                    _groupNames = groupsTask.Result.ToDictionary(g => g.Id, g => g.Name);
+
+                if (latestProbeTask.IsCompletedSuccessfully)
+                    _lastProbeRun = latestProbeTask.Result.ToDictionary(r => r.ProbeId, r => r.Timestamp);
+
+                if (metricKeysTask.IsCompletedSuccessfully)
+                    _metricKeys = metricKeysTask.Result;
+
+                await LoadProbeResultsAsync();
+            }
+        }
+        catch (Exception)
+        {
+        }
+        _loading = false;
+    }
+
+    private string ResolveGroupName(Guid? groupId) =>
+        groupId.HasValue && _groupNames.TryGetValue(groupId.Value, out var name) ? name : "Unknown Group";
+
+    private MonitoringStatus GetCheckerStatus(string checkerPluginId) =>
+        _checkerStatusLookup.GetValueOrDefault(checkerPluginId, MonitoringStatus.Unknown);
+
+    private async Task LoadEffectiveAssignmentsAsync()
+    {
+        var effectiveTask = Api.GetEffectiveAssignmentsAsync(Id);
+        var overridesTask = Api.GetOverridesAsync(Id);
+        await Task.WhenAll(effectiveTask, overridesTask);
+
+        var effective = effectiveTask.Result;
+        _effectiveProbes = effective?.Probes ?? [];
+        _effectiveCheckers = effective?.Checkers ?? [];
+
+        var overrides = overridesTask.Result;
+        _probeOverrides = overrides?.Probes ?? [];
+        _checkerOverrides = overrides?.Checkers ?? [];
+    }
+
+    private async Task OpenProbeOverrideDialog(EffectiveProbeAssignment probe)
+    {
+        var existingOverride = _probeOverrides.FirstOrDefault(o => o.AssignmentId == probe.AssignmentId);
+        var parameters = new DialogParameters<OverrideEditDialog>
+        {
+            { x => x.PluginId, probe.ProbePluginId },
+            { x => x.Plugins, _loadedPlugins },
+            { x => x.CurrentConfigJson, probe.ConfigJson },
+            { x => x.OverrideConfigJson, existingOverride?.ConfigJsonOverride },
+            { x => x.IsDisabled, existingOverride?.IsDisabled ?? false },
+            { x => x.IsNew, existingOverride is null }
+        };
+
+        var dialog = await DialogService.ShowAsync<OverrideEditDialog>("Probe Override", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: OverrideEditDialog.OverrideEditResult edit })
+        {
+            try
+            {
+                if (edit.Removed)
+                {
+                    await Api.DeleteProbeOverrideAsync(Id, probe.AssignmentId);
+                    Snackbar.Add("Override removed.", Severity.Success);
+                }
+                else
+                {
+                    await Api.UpsertProbeOverrideAsync(Id, probe.AssignmentId, new UpsertOverrideRequest(edit.ConfigJsonOverride, edit.IsDisabled));
+                    Snackbar.Add("Override saved.", Severity.Success);
+                }
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update override: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenCheckerOverrideDialog(EffectiveCheckerAssignment checker)
+    {
+        var existingOverride = _checkerOverrides.FirstOrDefault(o => o.AssignmentId == checker.AssignmentId);
+        var parameters = new DialogParameters<OverrideEditDialog>
+        {
+            { x => x.PluginId, checker.CheckerPluginId },
+            { x => x.Plugins, _loadedPlugins },
+            { x => x.CurrentConfigJson, checker.ConfigJson },
+            { x => x.OverrideConfigJson, existingOverride?.ConfigJsonOverride },
+            { x => x.IsDisabled, existingOverride?.IsDisabled ?? false },
+            { x => x.IsNew, existingOverride is null }
+        };
+
+        var dialog = await DialogService.ShowAsync<OverrideEditDialog>("Checker Override", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: OverrideEditDialog.OverrideEditResult edit })
+        {
+            try
+            {
+                if (edit.Removed)
+                {
+                    await Api.DeleteCheckerOverrideAsync(Id, checker.AssignmentId);
+                    Snackbar.Add("Override removed.", Severity.Success);
+                }
+                else
+                {
+                    await Api.UpsertCheckerOverrideAsync(Id, checker.AssignmentId, new UpsertOverrideRequest(edit.ConfigJsonOverride, edit.IsDisabled));
+                    Snackbar.Add("Override saved.", Severity.Success);
+                }
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update override: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task LoadProbeResultsAsync()
+    {
+        _probeResultsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            DateTimeOffset? from = _probeResultDateRange.Start.HasValue
+                ? new DateTimeOffset(_probeResultDateRange.Start.Value, TimeSpan.Zero)
+                : null;
+            DateTimeOffset? to = _probeResultDateRange.End.HasValue
+                ? new DateTimeOffset(_probeResultDateRange.End.Value.AddDays(1), TimeSpan.Zero)
+                : null;
+
+            _probeResults = await Api.GetProbeResultsAsync(Id, from, to);
+        }
+        catch (Exception)
+        {
+            _probeResults = [];
+        }
+        finally
+        {
+            _probeResultsLoading = false;
+        }
+    }
+
+    private async Task OpenEditDialog()
+    {
+        if (_host is null) return;
+
+        var parameters = new DialogParameters<HostDialog>
+        {
+            { x => x.Model, new HostDialog.FormModel
+                {
+                    Name = _host.Name,
+                    Address = _host.Address,
+                    Enabled = _host.Enabled,
+                    TagIds = _host.Tags.Select(t => t.Id).ToArray()
+                }
+            },
+            { x => x.IsEdit, true }
+        };
+
+        var dialog = await DialogService.ShowAsync<HostDialog>("Edit Host", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: HostDialog.FormModel model })
+        {
+            try
+            {
+                await Api.UpdateHostAsync(Id, new UpdateHostRequest(model.Name, model.Address, model.Enabled, model.TagIds));
+                Snackbar.Add("Host updated.", Severity.Success);
+                _host = await Api.GetHostAsync(Id);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update host: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenDeleteDialog()
+    {
+        var confirm = await DialogService.ShowMessageBox(
+            "Delete Host",
+            $"Are you sure you want to delete '{_host?.Name}'? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            try
+            {
+                await Api.DeleteHostAsync(Id);
+                Snackbar.Add("Host deleted.", Severity.Success);
+                Nav.NavigateTo("/hosts");
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete host: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private DateTimeOffset? GetLastRun(string probePluginId) =>
+        _lastProbeRun.GetValueOrDefault(probePluginId);
+
+    private bool IsPassiveProbe(string probePluginId)
+    {
+        var plugin = _loadedPlugins.FirstOrDefault(p => p.PluginId == probePluginId);
+        return string.Equals(plugin?.ProbeMode, "Passive", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatRelativeTime(DateTimeOffset timestamp)
+    {
+        var elapsed = DateTimeOffset.UtcNow - timestamp;
+        if (elapsed.TotalSeconds < 60) return "just now";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h ago";
+        return $"{(int)elapsed.TotalDays}d ago";
+    }
+
+    private async Task OpenEditProbeDialog(EffectiveProbeAssignment probe)
+    {
+        var parameters = new DialogParameters<ProbeAssignmentDialog>
+        {
+            { x => x.Plugins, _loadedPlugins },
+            { x => x.IsEdit, true },
+            { x => x.Model, new ProbeAssignmentDialog.FormModel
+                {
+                    ProbePluginId = probe.ProbePluginId,
+                    ScheduleCron = probe.ScheduleCron,
+                    ConfigJson = probe.ConfigJson,
+                    Enabled = probe.Enabled
+                }
+            }
+        };
+        var dialog = await DialogService.ShowAsync<ProbeAssignmentDialog>("Edit Probe Assignment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: ProbeAssignmentDialog.FormModel model })
+        {
+            try
+            {
+                await Api.UpdateProbeAssignmentAsync(Id, probe.AssignmentId,
+                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.ScheduleCron, model.ConfigJson, null, model.Enabled));
+                Snackbar.Add("Probe assignment updated.", Severity.Success);
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update probe assignment: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task TriggerProbeAsync(string probePluginId)
+    {
+        try
+        {
+            await Api.TriggerProbeAsync(Id, probePluginId);
+            Snackbar.Add($"Probe '{probePluginId}' triggered.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to trigger probe: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenAddProbeDialog()
+    {
+        var parameters = new DialogParameters<ProbeAssignmentDialog>
+        {
+            { x => x.Plugins, _loadedPlugins }
+        };
+        var dialog = await DialogService.ShowAsync<ProbeAssignmentDialog>("Add Probe Assignment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: ProbeAssignmentDialog.FormModel model })
+        {
+            try
+            {
+                await Api.CreateProbeAssignmentAsync(Id, new CreateProbeAssignmentRequest(
+                    model.ProbePluginId, model.ScheduleCron, model.ConfigJson, model.Enabled));
+                Snackbar.Add("Probe assignment created.", Severity.Success);
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to create probe assignment: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteProbeAsync(Guid probeId)
+    {
+        var confirm = await DialogService.ShowMessageBox("Delete Probe Assignment",
+            "Are you sure you want to remove this probe assignment?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm == true)
+        {
+            try
+            {
+                await Api.DeleteProbeAssignmentAsync(Id, probeId);
+                Snackbar.Add("Probe assignment deleted.", Severity.Success);
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete probe assignment: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenAddCheckerDialog()
+    {
+        var parameters = new DialogParameters<CheckerAssignmentDialog>
+        {
+            { x => x.Plugins, _loadedPlugins },
+            { x => x.MetricKeys, _metricKeys }
+        };
+        var dialog = await DialogService.ShowAsync<CheckerAssignmentDialog>("Add Checker Assignment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: CheckerAssignmentDialog.FormModel model })
+        {
+            try
+            {
+                await Api.CreateCheckerAssignmentAsync(Id, new CreateCheckerAssignmentRequest(
+                    model.CheckerPluginId, model.ConfigJson, model.Enabled));
+                Snackbar.Add("Checker assignment created.", Severity.Success);
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to create checker assignment: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenEditCheckerDialog(EffectiveCheckerAssignment checker)
+    {
+        var parameters = new DialogParameters<CheckerAssignmentDialog>
+        {
+            { x => x.Plugins, _loadedPlugins },
+            { x => x.MetricKeys, _metricKeys },
+            { x => x.IsEdit, true },
+            { x => x.Model, new CheckerAssignmentDialog.FormModel
+                {
+                    CheckerPluginId = checker.CheckerPluginId,
+                    ConfigJson = checker.ConfigJson,
+                    Enabled = checker.Enabled
+                }
+            }
+        };
+        var dialog = await DialogService.ShowAsync<CheckerAssignmentDialog>("Edit Checker Assignment", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: CheckerAssignmentDialog.FormModel model })
+        {
+            try
+            {
+                await Api.UpdateCheckerAssignmentAsync(Id, checker.AssignmentId,
+                    new UpdateCheckerAssignmentRequest(model.CheckerPluginId, model.ConfigJson, model.Enabled));
+                Snackbar.Add("Checker assignment updated.", Severity.Success);
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update checker assignment: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteCheckerAsync(Guid checkerId)
+    {
+        var confirm = await DialogService.ShowMessageBox("Delete Checker Assignment",
+            "Are you sure you want to remove this checker assignment?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm == true)
+        {
+            try
+            {
+                await Api.DeleteCheckerAssignmentAsync(Id, checkerId);
+                Snackbar.Add("Checker assignment deleted.", Severity.Success);
+                await LoadEffectiveAssignmentsAsync();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete checker assignment: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void ToggleMetadata(ProbeResultResponse result)
+    {
+        if (!_expandedResults.Remove(result))
+            _expandedResults.Add(result);
+    }
+
+    private static Dictionary<string, string> ParseMetadata(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new();
+
+        try
+        {
+            var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+            if (dict is null) return new();
+            return dict.ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
+        }
+        catch
+        {
+            return new() { ["raw"] = json };
+        }
+    }
+
+    public void Dispose()
+    {
+        _autoRefreshTimer?.Dispose();
+    }
+}

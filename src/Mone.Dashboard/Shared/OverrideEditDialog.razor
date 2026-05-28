@@ -1,0 +1,85 @@
+@using Mone.Dashboard.Models
+@using System.Text.Json
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsNew ? "Create Override" : "Edit Override") — @PluginId</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSwitch T="bool" @bind-Value="_isDisabled" Label="Disable this assignment for host" Color="Color.Warning" Class="mb-4" />
+
+        @if (_fields.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Configuration Override</MudText>
+            <ManifestFormFields Fields="_fields" @bind-Values="_configValues" />
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (!IsNew)
+        {
+            <MudButton Color="Color.Error" Variant="Variant.Text" OnClick="Remove" Class="mr-auto">Remove Override</MudButton>
+        }
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string PluginId { get; set; } = "";
+    [Parameter, EditorRequired] public LoadedPluginModel[] Plugins { get; set; } = [];
+    [Parameter] public string? CurrentConfigJson { get; set; }
+    [Parameter] public string? OverrideConfigJson { get; set; }
+    [Parameter] public bool IsDisabled { get; set; }
+    [Parameter] public bool IsNew { get; set; } = true;
+
+    private bool _isDisabled;
+    private IReadOnlyList<ConfigFieldModel> _fields = [];
+    private Dictionary<string, string> _configValues = new();
+
+    protected override void OnInitialized()
+    {
+        _isDisabled = IsDisabled;
+
+        var plugin = Plugins.FirstOrDefault(p => p.PluginId == PluginId);
+        _fields = plugin?.ConfigManifest?.Fields ?? [];
+
+        var baseConfig = DeserializeConfig(CurrentConfigJson);
+        var overrideConfig = DeserializeConfig(OverrideConfigJson);
+
+        foreach (var field in _fields)
+        {
+            if (overrideConfig.TryGetValue(field.Key, out var ov))
+                _configValues[field.Key] = ov;
+            else if (baseConfig.TryGetValue(field.Key, out var bv))
+                _configValues[field.Key] = bv;
+        }
+    }
+
+    private static Dictionary<string, string> DeserializeConfig(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try
+        {
+            var doc = JsonDocument.Parse(json);
+            var dict = new Dictionary<string, string>();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+                dict[prop.Name] = prop.Value.ToString();
+            return dict;
+        }
+        catch { return new(); }
+    }
+
+    private string? SerializeConfig()
+    {
+        var nonEmpty = _configValues.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        return nonEmpty.Count > 0 ? JsonSerializer.Serialize(nonEmpty) : null;
+    }
+
+    private void Save() => MudDialog.Close(DialogResult.Ok(new OverrideEditResult(SerializeConfig(), _isDisabled, Removed: false)));
+    private void Remove() => MudDialog.Close(DialogResult.Ok(new OverrideEditResult(null, false, Removed: true)));
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed record OverrideEditResult(string? ConfigJsonOverride, bool IsDisabled, bool Removed);
+}

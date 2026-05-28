@@ -1,0 +1,161 @@
+@page "/notifications"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Notifications - Mone</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Notification Configurations</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+}
+else if (_configs.Length == 0)
+{
+    <MudPaper Class="pa-4 mb-4 d-flex flex-column align-center">
+        <MudIcon Icon="@Icons.Material.Filled.NotificationsNone" Size="Size.Large" Class="mud-text-secondary mb-2" />
+        <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">No notification configs yet</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="OpenCreateDialog">Add Configuration</MudButton>
+    </MudPaper>
+}
+else
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenCreateDialog" Class="mb-4">Add Configuration</MudButton>
+
+    <MudDataGrid Items="_configs" Hover="true" Dense="true" T="NotificationConfigResponse">
+        <Columns>
+            <PropertyColumn Property="x => x.PluginId" Title="Plugin" />
+            <TemplateColumn Title="Enabled">
+                <CellTemplate>
+                    <MudIcon Icon="@(context.Item.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(context.Item.Enabled ? Color.Success : Color.Default)"
+                             Size="Size.Small" />
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="x => x.Scope" Title="Scope" />
+            <TemplateColumn Title="Actions">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   OnClick="@(() => OpenEditDialog(context.Item))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => ConfirmDelete(context.Item))" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private NotificationConfigResponse[] _configs = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigsAsync();
+    }
+
+    private async Task LoadConfigsAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _configs = await Api.GetNotificationConfigsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load configs: {ex.Message}", Severity.Error);
+        }
+
+        _loading = false;
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<NotificationConfigDialog>();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<NotificationConfigDialog>("Create Notification Config", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: NotificationConfigDialog.FormModel model })
+        {
+            try
+            {
+                var request = new CreateNotificationConfigRequest(model.PluginId, model.ConfigJson, model.Enabled, model.Scope);
+                await Api.CreateNotificationConfigAsync(request);
+                Snackbar.Add("Configuration created", Severity.Success);
+                await LoadConfigsAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to create: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task OpenEditDialog(NotificationConfigResponse config)
+    {
+        var parameters = new DialogParameters<NotificationConfigDialog>
+        {
+            { x => x.Model, new NotificationConfigDialog.FormModel
+                {
+                    PluginId = config.PluginId,
+                    ConfigJson = config.ConfigJson ?? "",
+                    Enabled = config.Enabled,
+                    Scope = config.Scope ?? ""
+                }
+            },
+            { x => x.IsEdit, true }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<NotificationConfigDialog>("Edit Notification Config", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: NotificationConfigDialog.FormModel model })
+        {
+            try
+            {
+                var request = new UpdateNotificationConfigRequest(model.PluginId, model.ConfigJson, model.Enabled, model.Scope);
+                await Api.UpdateNotificationConfigAsync(config.Id, request);
+                Snackbar.Add("Configuration updated", Severity.Success);
+                await LoadConfigsAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ConfirmDelete(NotificationConfigResponse config)
+    {
+        var parameters = new DialogParameters<MudMessageBox>
+        {
+            { x => x.MarkupMessage, new MarkupString($"Delete notification config <b>{config.PluginId}</b>?") },
+            { x => x.YesText, "Delete" },
+            { x => x.NoText, "Cancel" }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall };
+        var dialog = await DialogService.ShowAsync<MudMessageBox>("Confirm Delete", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            try
+            {
+                await Api.DeleteNotificationConfigAsync(config.Id);
+                Snackbar.Add("Configuration deleted", Severity.Success);
+                await LoadConfigsAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

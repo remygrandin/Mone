@@ -1,0 +1,46 @@
+@using Mone.Dashboard.Models
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Required="true" RequiredError="Name is required" Class="mb-4" />
+        <MudTextField @bind-Value="_description" Label="Description" Lines="2" Class="mb-4" />
+        <MudSelect T="Guid?" @bind-Value="_parentGroupId" Label="Parent Group" Clearable="true">
+            @foreach (var g in Groups)
+            {
+                <MudSelectItem T="Guid?" Value="@g.Id">@g.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="@string.IsNullOrWhiteSpace(_name)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public HostGroupResponse[] Groups { get; set; } = [];
+    [Parameter] public string? EditName { get; set; }
+    [Parameter] public string? EditDescription { get; set; }
+    [Parameter] public Guid? ParentGroupId { get; set; }
+
+    private string _name = "";
+    private string? _description;
+    private Guid? _parentGroupId;
+
+    protected override void OnInitialized()
+    {
+        _name = EditName ?? "";
+        _description = EditDescription;
+        _parentGroupId = ParentGroupId;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        var request = new CreateHostGroupRequest(_name.Trim(), _description?.Trim(), _parentGroupId);
+        MudDialog.Close(DialogResult.Ok(request));
+    }
+}

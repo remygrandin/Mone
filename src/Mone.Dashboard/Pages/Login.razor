@@ -1,0 +1,117 @@
+@page "/login"
+@using Mone.Dashboard.Auth
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Services
+@inject AuthService AuthService
+@inject JwtAuthStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Login - Mone Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center" Style="min-height: 80vh;">
+    <MudPaper Elevation="3" Class="pa-8 mx-auto" Style="width: 100%; max-width: 400px;">
+        <MudText Typo="Typo.h4" Align="Align.Center" Class="mb-6">Mone Login</MudText>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+                      CloseIconClicked="() => _errorMessage = null">@_errorMessage</MudAlert>
+        }
+
+        @if (_oidcProvider is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true"
+                       Class="mb-4" Href="@_oidcProvider.LoginUrl"
+                       Target="_self">
+                Sign in with @_oidcProvider.DisplayName
+            </MudButton>
+            <MudDivider Class="mb-4" />
+        }
+
+        <EditForm Model="@_model" OnValidSubmit="HandleLogin">
+            <MudTextField @bind-Value="_model.Email" Label="Email" InputType="InputType.Email"
+                          Required="true" RequiredError="Email is required"
+                          Class="mb-4" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="_model.Password" Label="Password" InputType="InputType.Password"
+                          Required="true" RequiredError="Password is required"
+                          Class="mb-6" Variant="Variant.Outlined" />
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                       FullWidth="true" Disabled="_loading">
+                @if (_loading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Log In
+            </MudButton>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [SupplyParameterFromQuery(Name = "token")]
+    public string? Token { get; set; }
+
+    [SupplyParameterFromQuery(Name = "expires")]
+    public string? Expires { get; set; }
+
+    private readonly LoginModel _model = new();
+    private bool _loading;
+    private string? _errorMessage;
+    private AuthProviderInfo? _oidcProvider;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(Token) && !string.IsNullOrEmpty(Expires) &&
+            DateTime.TryParse(Expires, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var expires))
+        {
+            await AuthService.StoreTokenAsync(Token, expires);
+            AuthStateProvider.NotifyAuthStateChanged();
+            Navigation.NavigateTo("/hosts");
+            return;
+        }
+
+        if (await AuthService.IsAuthenticatedAsync())
+        {
+            Navigation.NavigateTo("/hosts");
+            return;
+        }
+
+        var providers = await AuthService.GetProvidersAsync();
+        _oidcProvider = providers.FirstOrDefault(p => p.Name == "oidc");
+    }
+
+    private async Task HandleLogin()
+    {
+        _loading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var success = await AuthService.LoginAsync(_model.Email, _model.Password);
+            if (success)
+            {
+                AuthStateProvider.NotifyAuthStateChanged();
+                Navigation.NavigateTo("/hosts");
+            }
+            else
+            {
+                _errorMessage = "Invalid email or password.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            _errorMessage = "Unable to reach the server. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private sealed class LoginModel
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

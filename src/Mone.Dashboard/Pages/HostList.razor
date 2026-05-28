@@ -1,0 +1,164 @@
+@page "/hosts"
+@using Mone.Dashboard.Helpers
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Services
+@using Mone.Dashboard.Shared
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Hosts - Mone</PageTitle>
+
+<div class="d-flex align-center justify-space-between mb-4">
+    <MudText Typo="Typo.h4">Hosts</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenAddHostDialog">Add Host</MudButton>
+</div>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Filter by Tags</MudText>
+        <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection" SelectedValuesChanged="OnTagSelectionChanged">
+            @foreach (var tag in _tags)
+            {
+                <MudChip T="Guid" Value="tag.Id" Variant="Variant.Outlined" Color="Color.Primary">
+                    @tag.Name (@tag.HostCount)
+                </MudChip>
+            }
+        </MudChipSet>
+    </MudPaper>
+
+    <MudDataGrid Items="_hosts" Hover="true" Dense="true" RowClick="OnRowClick" T="HostViewModel" Class="cursor-pointer">
+        <Columns>
+            <PropertyColumn Property="x => x.Host.Name" Title="Name" />
+            <PropertyColumn Property="x => x.Host.Address" Title="Address" />
+            <TemplateColumn Title="Enabled">
+                <CellTemplate>
+                    <MudIcon Icon="@(context.Item.Host.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(context.Item.Host.Enabled ? Color.Success : Color.Error)"
+                             Size="Size.Small" />
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Status">
+                <CellTemplate>
+                    <MudChip T="string"
+                             Color="StatusColorHelper.ToMudColor(context.Item.Status)"
+                             Size="Size.Small">
+                        @StatusColorHelper.ToLabel(context.Item.Status)
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Tags">
+                <CellTemplate>
+                    @foreach (var tag in context.Item.Host.Tags)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="mr-1">@tag.Name</MudChip>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<HostViewModel> _hosts = [];
+    private TagResponse[] _tags = [];
+    private Guid[] _selectedTagIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+        _tags = await Api.GetTagsAsync();
+        var hosts = await Api.GetHostsAsync(_selectedTagIds.Length > 0 ? _selectedTagIds : null);
+
+        var tasks = hosts.Select(async host =>
+        {
+            var status = MonitoringStatus.Unknown;
+            try
+            {
+                var latestStatuses = await Api.GetLatestStatusAsync(host.Id);
+                if (latestStatuses.Length > 0)
+                    status = latestStatuses.Max(s => s.CurrentStatus);
+            }
+            catch
+            {
+            }
+            return new HostViewModel(host, status);
+        });
+
+        _hosts = (await Task.WhenAll(tasks)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load hosts: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnTagSelectionChanged(IReadOnlyCollection<Guid> selectedValues)
+    {
+        _selectedTagIds = selectedValues.ToArray();
+        await LoadDataAsync();
+    }
+
+    private void OnRowClick(DataGridRowClickEventArgs<HostViewModel> args)
+    {
+        Nav.NavigateTo($"/hosts/{args.Item.Host.Id}");
+    }
+
+    private async Task OpenAddHostDialog()
+    {
+        var parameters = new DialogParameters<HostDialog>
+        {
+            { x => x.Model, new HostDialog.FormModel() },
+            { x => x.IsEdit, false }
+        };
+
+        var dialog = await DialogService.ShowAsync<HostDialog>("Add Host", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: HostDialog.FormModel model })
+        {
+            try
+            {
+                await Api.CreateHostAsync(new CreateHostRequest(model.Name, model.Address, model.Enabled, model.TagIds));
+                Snackbar.Add("Host created.", Severity.Success);
+                await LoadDataAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to create host: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private sealed record HostViewModel(HostResponse Host, MonitoringStatus Status);
+}

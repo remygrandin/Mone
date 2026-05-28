@@ -1,0 +1,90 @@
+@using Mone.Dashboard.Models
+@using System.Text.Json
+@using MudBlazor
+
+<MudDialog>
+    <TitleContent>@(IsEdit ? "Edit Probe Assignment" : "Add Probe Assignment")</TitleContent>
+    <DialogContent>
+        <MudSelect T="LoadedPluginModel" Label="Probe Plugin" Required="true"
+                   Value="_selectedPlugin" ValueChanged="OnPluginSelected"
+                   ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                   Disabled="@IsEdit">
+            @foreach (var plugin in Plugins.Where(p => string.Equals(p.Kind, "Probe", StringComparison.OrdinalIgnoreCase)))
+            {
+                <MudSelectItem Value="@plugin">@plugin.Name (@plugin.PluginId)</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudTextField @bind-Value="Model.ScheduleCron" Label="Schedule (Cron)" Required="true"
+                      HelperText="e.g. */5 * * * * (every 5 minutes)" Class="mt-3" />
+
+        @if (_selectedPlugin?.ConfigManifest?.Fields is { Count: > 0 } fields && fields.Any(f => !f.IsGlobal))
+        {
+            <div class="mt-3">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Configuration</MudText>
+                <ManifestFormFields Fields="@fields" Values="@_configValues" ValuesChanged="@(v => _configValues = v)" />
+            </div>
+        }
+
+        <MudSwitch @bind-Value="Model.Enabled" Label="Enabled" Color="Color.Primary" Class="mt-3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                   Disabled="@(_selectedPlugin is null || string.IsNullOrWhiteSpace(Model.ScheduleCron))">
+            @(IsEdit ? "Save" : "Add")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public FormModel Model { get; set; } = new();
+    [Parameter] public IReadOnlyList<LoadedPluginModel> Plugins { get; set; } = [];
+    [Parameter] public bool IsEdit { get; set; }
+
+    private LoadedPluginModel? _selectedPlugin;
+    private Dictionary<string, string> _configValues = new();
+
+    protected override void OnParametersSet()
+    {
+        if (IsEdit && !string.IsNullOrEmpty(Model.ProbePluginId))
+        {
+            _selectedPlugin = Plugins.FirstOrDefault(p => p.PluginId == Model.ProbePluginId);
+            if (!string.IsNullOrEmpty(Model.ConfigJson))
+            {
+                try { _configValues = JsonSerializer.Deserialize<Dictionary<string, string>>(Model.ConfigJson) ?? new(); }
+                catch { _configValues = new(); }
+            }
+        }
+    }
+
+    private void OnPluginSelected(LoadedPluginModel? plugin)
+    {
+        _selectedPlugin = plugin;
+        _configValues = new Dictionary<string, string>();
+        if (plugin is not null)
+            Model.ProbePluginId = plugin.PluginId;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        if (_configValues.Count > 0)
+        {
+            var nonEmpty = _configValues.Where(kv => !string.IsNullOrEmpty(kv.Value))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+            Model.ConfigJson = nonEmpty.Count > 0 ? JsonSerializer.Serialize(nonEmpty) : null;
+        }
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    public sealed class FormModel
+    {
+        public string ProbePluginId { get; set; } = "";
+        public string ScheduleCron { get; set; } = "";
+        public string? ConfigJson { get; set; }
+        public bool Enabled { get; set; } = true;
+    }
+}

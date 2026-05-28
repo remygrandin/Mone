@@ -1,0 +1,98 @@
+@page "/hosts/{Id:guid}/status"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Status History - Mone</PageTitle>
+
+<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+           OnClick="@(() => Nav.NavigateTo($"/hosts/{Id}"))" Class="mb-2">
+    Back to Host Detail
+</MudButton>
+
+<MudText Typo="Typo.h5" Class="mb-4">Status History</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudDateRangePicker @bind-DateRange="_dateRange" @bind-DateRange:after="LoadHistoryAsync"
+                        Label="Date Range" Variant="Variant.Outlined" />
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+}
+else if (_history.Length == 0)
+{
+    <MudAlert Severity="Severity.Info">No status events found for the selected date range.</MudAlert>
+}
+else
+{
+    <MudTimeline TimelinePosition="TimelinePosition.Start">
+        @foreach (var entry in _history)
+        {
+            <MudTimelineItem Color="StatusColorHelper.ToMudColor(entry.CurrentStatus)" Size="Size.Medium">
+                <ItemContent>
+                    <MudCard Outlined="true" Class="mb-2">
+                        <MudCardContent>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
+                            </MudText>
+                            <MudText Typo="Typo.body2" Class="mt-1">
+                                <strong>@entry.CheckerId</strong>
+                            </MudText>
+                            <div class="d-flex align-center gap-2 mt-1">
+                                <MudChip T="string" Color="StatusColorHelper.ToMudColor(entry.PreviousStatus)" Size="Size.Small">
+                                    @StatusColorHelper.ToLabel(entry.PreviousStatus)
+                                </MudChip>
+                                <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                                <MudChip T="string" Color="StatusColorHelper.ToMudColor(entry.CurrentStatus)" Size="Size.Small">
+                                    @StatusColorHelper.ToLabel(entry.CurrentStatus)
+                                </MudChip>
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                </ItemContent>
+            </MudTimelineItem>
+        }
+    </MudTimeline>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private StatusResponse[] _history = [];
+    private DateRange _dateRange = new(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            DateTimeOffset? from = _dateRange.Start.HasValue
+                ? new DateTimeOffset(_dateRange.Start.Value, TimeSpan.Zero)
+                : null;
+            DateTimeOffset? to = _dateRange.End.HasValue
+                ? new DateTimeOffset(_dateRange.End.Value.AddDays(1), TimeSpan.Zero)
+                : null;
+
+            _history = await Api.GetStatusHistoryAsync(Id, from, to);
+            _history = _history.OrderByDescending(s => s.Timestamp).ToArray();
+        }
+        catch (Exception)
+        {
+            _history = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

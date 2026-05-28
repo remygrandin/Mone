@@ -1,0 +1,83 @@
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Services
+@inject ApiClient Api
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField @bind-Value="Model.Name" Label="Name" Required="true"
+                          RequiredError="Name is required" Variant="Variant.Outlined" Class="mb-3" />
+
+            <MudTextField @bind-Value="Model.Address" Label="Address" Required="true"
+                          RequiredError="Address is required" Variant="Variant.Outlined" Class="mb-3"
+                          HelperText="Hostname or IP address" />
+
+            <MudSwitch @bind-Value="Model.Enabled" Label="Enabled" Color="Color.Primary" Class="mb-3" />
+
+            @if (_tags.Length > 0)
+            {
+                <MudText Typo="Typo.body2" Class="mb-1">Tags</MudText>
+                <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
+                            SelectedValues="_selectedTagIds"
+                            SelectedValuesChanged="OnTagSelectionChanged">
+                    @foreach (var tag in _tags)
+                    {
+                        <MudChip T="Guid" Value="tag.Id" Variant="Variant.Outlined" Color="Color.Primary">
+                            @tag.Name
+                        </MudChip>
+                    }
+                </MudChipSet>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">
+            @(IsEdit ? "Save" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public FormModel Model { get; set; } = new();
+    [Parameter] public bool IsEdit { get; set; }
+
+    private MudForm _form = null!;
+    private TagResponse[] _tags = [];
+    private IReadOnlyCollection<Guid> _selectedTagIds = Array.Empty<Guid>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tags = await Api.GetTagsAsync();
+        if (Model.TagIds is { Length: > 0 })
+            _selectedTagIds = Model.TagIds.ToList();
+    }
+
+    private void OnTagSelectionChanged(IReadOnlyCollection<Guid> values)
+    {
+        _selectedTagIds = values;
+        Model.TagIds = values.ToArray();
+    }
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_form.IsValid)
+            return;
+
+        Model.TagIds = _selectedTagIds.ToArray();
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class FormModel
+    {
+        public string Name { get; set; } = "";
+        public string Address { get; set; } = "";
+        public bool Enabled { get; set; } = true;
+        public Guid[] TagIds { get; set; } = [];
+    }
+}

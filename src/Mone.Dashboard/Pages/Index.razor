@@ -1,0 +1,88 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+
+<PageTitle>Mone Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Dashboard</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+else if (_summary is not null)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard>
+                <MudCardContent Class="d-flex flex-column align-center">
+                    <MudText Typo="Typo.h3">@_summary.TotalHosts</MudText>
+                    <MudText Typo="Typo.subtitle1">Total Hosts</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Style="@($"border-left: 4px solid {Colors.Green.Default}")">
+                <MudCardContent Class="d-flex flex-column align-center">
+                    <MudText Typo="Typo.h3" Color="Color.Success">@_summary.Healthy</MudText>
+                    <MudText Typo="Typo.subtitle1">Healthy</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Style="@($"border-left: 4px solid {Colors.Orange.Default}")">
+                <MudCardContent Class="d-flex flex-column align-center">
+                    <MudText Typo="Typo.h3" Color="Color.Warning">@_summary.Degraded</MudText>
+                    <MudText Typo="Typo.subtitle1">Degraded</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Style="@($"border-left: 4px solid {Colors.Red.Default}")">
+                <MudCardContent Class="d-flex flex-column align-center">
+                    <MudText Typo="Typo.h3" Color="Color.Error">@_summary.Unhealthy</MudText>
+                    <MudText Typo="Typo.subtitle1">Unhealthy</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Style="@($"border-left: 4px solid {Colors.Gray.Default}")">
+                <MudCardContent Class="d-flex flex-column align-center">
+                    <MudText Typo="Typo.h3" Color="Color.Dark">@_summary.Unreachable</MudText>
+                    <MudText Typo="Typo.subtitle1">Unreachable</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4" lg="2">
+            <MudCard Style="@($"border-left: 4px solid {Colors.Gray.Lighten1}")">
+                <MudCardContent Class="d-flex flex-column align-center">
+                    <MudText Typo="Typo.h3" Color="Color.Default">@_summary.Unknown</MudText>
+                    <MudText Typo="Typo.subtitle1">Unknown</MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private DashboardSummaryResponse? _summary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _summary = await Api.GetDashboardSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load dashboard summary: {ex.Message}";
+        }
+        _loading = false;
+    }
+}
