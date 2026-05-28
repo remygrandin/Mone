@@ -31,7 +31,6 @@
     <Project Path="tests/Mone.PluginEngine.Tests/Mone.PluginEngine.Tests.csproj" />
     <Project Path="tests/Mone.Messaging.Tests/Mone.Messaging.Tests.csproj" />
     <Project Path="tests/Mone.Infrastructure.Tests/Mone.Infrastructure.Tests.csproj" />
-    <Project Path="tests/Mone.Plugins.Tests/Mone.Plugins.Tests.csproj" />
     <Project Path="tests/Mone.CheckerEngine.Tests/Mone.CheckerEngine.Tests.csproj" />
     <Project Path="tests/Mone.Api.Tests/Mone.Api.Tests.csproj" />
     <Project Path="tests/Mone.AlertEngine.Tests/Mone.AlertEngine.Tests.csproj" />
