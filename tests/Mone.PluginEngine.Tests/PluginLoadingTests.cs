@@ -63,7 +63,7 @@ public class PluginLoadingTests : IDisposable
 
         var registration = _engine.Registry.GetAll().Single();
         Assert.Equal(PluginKind.Checker, registration.Metadata.Kind);
-        Assert.Equal(CheckerMode.Stream, registration.Metadata.CheckerMode);
+        Assert.Equal(CheckerInvocationMode.OnProbeResult, registration.Metadata.InvocationMode);
     }
 
     [Fact]

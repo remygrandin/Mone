@@ -81,6 +81,7 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddDbContext<MoneDbContext>(options =>
             options.UseNpgsql(PostgresConnectionString));
+        services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IServiceScopeFactory>();
     }
@@ -99,7 +100,8 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
             Description = plugin.Description,
             PluginTypeName = plugin.GetType().FullName!,
             Kind = PluginKind.Checker,
-            CheckerMode = plugin.CheckerMode,
+            InvocationMode = plugin.InvocationMode,
+            Interval = plugin.Interval,
             AssemblyPath = plugin.GetType().Assembly.Location
         };
         engine.Registry.TryRegister(plugin.Name, new PluginRegistration(plugin, metadata));

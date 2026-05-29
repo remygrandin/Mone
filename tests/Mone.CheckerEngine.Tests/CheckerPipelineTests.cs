@@ -47,8 +47,9 @@ public sealed class CheckerPipelineTests
         var logger = NullLogger<StreamCheckerService>.Instance;
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var sustainTracker = new SustainTracker();
-        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, statusTracker, sustainTracker, logger);
+        var dispatcher = new CheckerDispatcher(
+            js, pluginEngine, statusTracker, NullLogger<CheckerDispatcher>.Instance);
+        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, logger);
 
         var statusConsumer = await js.CreateOrUpdateConsumerAsync(
             MoneStreams.StatusChanges.StreamName,
@@ -125,8 +126,9 @@ public sealed class CheckerPipelineTests
         var logger = NullLogger<StreamCheckerService>.Instance;
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var sustainTracker = new SustainTracker();
-        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, statusTracker, sustainTracker, logger);
+        var dispatcher = new CheckerDispatcher(
+            js, pluginEngine, statusTracker, NullLogger<CheckerDispatcher>.Instance);
+        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, logger);
 
         var statusConsumer = await js.CreateOrUpdateConsumerAsync(
             MoneStreams.StatusChanges.StreamName,
@@ -200,8 +202,9 @@ public sealed class CheckerPipelineTests
         var logger = NullLogger<StreamCheckerService>.Instance;
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var sustainTracker = new SustainTracker();
-        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, statusTracker, sustainTracker, logger);
+        var dispatcher = new CheckerDispatcher(
+            js, pluginEngine, statusTracker, NullLogger<CheckerDispatcher>.Instance);
+        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, logger);
 
         var statusConsumer = await js.CreateOrUpdateConsumerAsync(
             MoneStreams.StatusChanges.StreamName,

@@ -12,8 +12,8 @@ public enum InstantiationMode
     Batch
 }
 
-public enum CheckerMode
+public enum CheckerInvocationMode
 {
-    Stream,
-    Batch
+    OnProbeResult,
+    OnInterval
 }

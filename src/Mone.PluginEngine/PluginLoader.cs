@@ -39,7 +39,10 @@ public sealed class PluginLoader : IDisposable
                 typeof(MonitoringStatus),
                 typeof(ProbeMode),
                 typeof(InstantiationMode),
-                typeof(CheckerMode),
+                typeof(CheckerInvocationMode),
+                typeof(CheckerEvaluationContext),
+                typeof(IMetricHistoryAccessor),
+                typeof(ProbeResultRecord),
                 typeof(ProbePluginAttribute),
                 typeof(CheckerPluginAttribute),
                 typeof(NotificationPluginAttribute),
@@ -123,6 +126,7 @@ public sealed class PluginLoader : IDisposable
         if (typeof(ICheckerPlugin).IsAssignableFrom(type))
         {
             var attr = type.GetCustomAttribute<CheckerPluginAttribute>();
+            var checker = plugin as ICheckerPlugin;
             return new PluginMetadata
             {
                 PluginId = pluginId,
@@ -131,7 +135,8 @@ public sealed class PluginLoader : IDisposable
                 Description = plugin.Description,
                 PluginTypeName = type.FullName!,
                 Kind = PluginKind.Checker,
-                CheckerMode = attr?.CheckerMode,
+                InvocationMode = attr?.InvocationMode ?? checker?.InvocationMode,
+                Interval = checker?.Interval,
                 AssemblyPath = _assemblyPath,
                 ConfigManifest = configManifest
             };

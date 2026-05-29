@@ -17,8 +17,9 @@ builder.Services.AddSingleton(sp =>
 
 builder.Services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();
 builder.Services.AddSingleton<StatusTracker>();
-builder.Services.AddSingleton<SustainTracker>();
+builder.Services.AddSingleton<CheckerDispatcher>();
 builder.Services.AddHostedService<StreamCheckerService>();
+builder.Services.AddHostedService<IntervalCheckerScheduler>();
 
 var host = builder.Build();
 

@@ -12,7 +12,9 @@ public sealed record PluginMetadata
     public required PluginKind Kind { get; init; }
     public ProbeMode? ProbeMode { get; init; }
     public InstantiationMode? InstantiationMode { get; init; }
-    public CheckerMode? CheckerMode { get; init; }
+    public CheckerInvocationMode? InvocationMode { get; init; }
+
+    public TimeSpan? Interval { get; init; }
     public required string AssemblyPath { get; init; }
     public ConfigManifest? ConfigManifest { get; init; }
 }
