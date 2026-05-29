@@ -1,15 +1,19 @@
 namespace Mone.Api.Models;
 
-public sealed record PluginManifestResponse(
-    Guid Id,
-    Guid RepositoryId,
+public enum PluginStatus { Available, Installed, UpdateAvailable }
+
+public sealed record PluginCatalogResponse(
     string Name,
-    string Version,
     string? Description,
     string PluginType,
     string? Author,
     string? License,
     string? Homepage,
-    bool IsInstalled,
-    DateTime? InstalledAt,
-    DateTime SyncedAt);
+    PluginStatus Status,
+    Guid? ManifestId,
+    Guid? RepositoryId,
+    string? LatestVersion,
+    string? InstalledVersion,
+    DateTime? SyncedAt);
+
+public sealed record UninstallPluginRequest(string Name);

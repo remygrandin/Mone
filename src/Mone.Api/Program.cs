@@ -11,7 +11,6 @@ using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 using Mone.Infrastructure.Services;
 using Mone.Messaging.Extensions;
-using Mone.PluginEngine;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -73,6 +72,7 @@ builder.Services.AddHttpClient("GitHub", client =>
 });
 
 builder.Services.AddSingleton<Mone.PluginEngine.PluginEngine>();
+builder.Services.AddSingleton<IInstalledPluginQuery, PluginEngineInstalledPluginQuery>();
 builder.Services.AddScoped<IPluginRepositoryService, PluginRepositoryService>();
 builder.Services.AddScoped<InheritanceResolver>();
 builder.Services.AddScoped<JwtTokenService>();
@@ -121,10 +121,27 @@ using (var scope = app.Services.CreateScope())
 
 var pluginDir = builder.Configuration["Api:PluginDirectory"] ?? "plugins";
 var pluginFullPath = Path.GetFullPath(pluginDir);
+Directory.CreateDirectory(pluginFullPath);
 var pluginEngine = app.Services.GetRequiredService<Mone.PluginEngine.PluginEngine>();
 pluginEngine.LoadPluginsFromDirectory(pluginFullPath);
 app.Logger.LogInformation("Loaded {Count} plugin(s) from {Path}",
     pluginEngine.Registry.GetAll().Count, pluginFullPath);
+
+_ = Task.Run(async () =>
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<MoneDbContext>();
+    var svc = scope.ServiceProvider.GetRequiredService<IPluginRepositoryService>();
+    var neverSynced = await db.PluginRepositories
+        .Where(r => r.Enabled && r.LastSyncedAt == null)
+        .Select(r => r.Id)
+        .ToListAsync();
+    foreach (var id in neverSynced)
+    {
+        try { await svc.SyncRepositoryAsync(id); }
+        catch (Exception ex) { app.Logger.LogWarning(ex, "Initial sync failed for repository {RepositoryId}", id); }
+    }
+});
 
 app.UseAuthentication();
 app.UseAuthorization();

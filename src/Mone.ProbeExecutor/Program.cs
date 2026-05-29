@@ -37,6 +37,7 @@ builder.Services.AddTransient<ProbeExecutionJob>();
 builder.Services.AddHostedService<ProbeSchedulerService>();
 builder.Services.AddHostedService<ProbeTriggerListenerService>();
 builder.Services.AddHostedService<UdpListenerService>();
+builder.Services.AddHostedService<Mone.PluginEngine.PluginReloadListener>();
 
 var app = builder.Build();
 

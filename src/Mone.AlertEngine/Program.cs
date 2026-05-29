@@ -16,6 +16,7 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<ILogger<Mone.PluginEngine.PluginEngine>>(), enableHotReload: false));
 
 builder.Services.AddHostedService<AlertDispatcherService>();
+builder.Services.AddHostedService<Mone.PluginEngine.PluginReloadListener>();
 
 var host = builder.Build();
 

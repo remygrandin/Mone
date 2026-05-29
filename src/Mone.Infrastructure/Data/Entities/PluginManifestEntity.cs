@@ -17,9 +17,6 @@ public sealed class PluginManifestEntity
     public string? License { get; set; }
     public string? Homepage { get; set; }
     public string? TagsJson { get; set; }
-    public bool IsInstalled { get; set; }
-    public string? InstalledPath { get; set; }
-    public DateTime? InstalledAt { get; set; }
     public DateTime SyncedAt { get; set; }
 
     public PluginRepositoryEntity Repository { get; set; } = null!;

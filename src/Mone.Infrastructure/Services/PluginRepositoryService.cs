@@ -232,15 +232,10 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
         _logger.LogInformation("InstallPlugin started — ManifestId={ManifestId}", manifestId);
 
         var manifest = await _db.PluginManifests
+            .AsNoTracking()
             .Include(m => m.Repository)
             .FirstOrDefaultAsync(m => m.Id == manifestId, ct)
             ?? throw new InvalidOperationException($"Plugin manifest {manifestId} not found");
-
-        if (manifest.IsInstalled)
-        {
-            _logger.LogInformation("InstallPlugin skipped — ManifestId={ManifestId} already installed", manifestId);
-            return;
-        }
 
         var client = _httpClientFactory.CreateClient("GitHub");
         using var request = new HttpRequestMessage(HttpMethod.Get, manifest.DownloadUrl);
@@ -263,6 +258,7 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
                 $"SHA256 hash mismatch for plugin '{manifest.Name}': expected {expectedHash}, got {actualHash}");
         }
 
+        Directory.CreateDirectory(_pluginsBaseDir);
         var pluginDir = Path.Combine(_pluginsBaseDir, manifest.Name);
 
         try
@@ -275,14 +271,9 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
             using var zipStream = new MemoryStream(zipBytes);
             ZipFile.ExtractToDirectory(zipStream, pluginDir);
 
-            manifest.IsInstalled = true;
-            manifest.InstalledPath = pluginDir;
-            manifest.InstalledAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
-
             _logger.LogInformation(
-                "InstallPlugin complete — ManifestId={ManifestId}, PluginName={PluginName}, Path={InstalledPath}, Sha256Match=true",
-                manifestId, manifest.Name, pluginDir);
+                "InstallPlugin complete — ManifestId={ManifestId}, PluginName={PluginName}, Version={Version}, Path={InstalledPath}",
+                manifestId, manifest.Name, manifest.Version, pluginDir);
         }
         catch (InvalidDataException ex)
         {
@@ -296,34 +287,23 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
         }
     }
 
-    public async Task UninstallPluginAsync(Guid manifestId, CancellationToken ct = default)
+    public Task UninstallPluginAsync(string pluginName, CancellationToken ct = default)
     {
-        _logger.LogInformation("UninstallPlugin started — ManifestId={ManifestId}", manifestId);
+        _logger.LogInformation("UninstallPlugin started — PluginName={PluginName}", pluginName);
 
-        var manifest = await _db.PluginManifests
-            .FirstOrDefaultAsync(m => m.Id == manifestId, ct)
-            ?? throw new InvalidOperationException($"Plugin manifest {manifestId} not found");
+        if (string.IsNullOrWhiteSpace(pluginName) || pluginName.Contains('/') || pluginName.Contains('\\') || pluginName.Contains(".."))
+            throw new InvalidOperationException($"Invalid plugin name: '{pluginName}'");
 
-        if (!manifest.IsInstalled)
+        var pluginDir = Path.Combine(_pluginsBaseDir, pluginName);
+        if (!Directory.Exists(pluginDir))
         {
-            _logger.LogInformation("UninstallPlugin skipped — ManifestId={ManifestId} not installed", manifestId);
-            return;
+            _logger.LogInformation("UninstallPlugin skipped — PluginName={PluginName} not installed", pluginName);
+            return Task.CompletedTask;
         }
 
-        if (!string.IsNullOrEmpty(manifest.InstalledPath) && Directory.Exists(manifest.InstalledPath))
-        {
-            Directory.Delete(manifest.InstalledPath, recursive: true);
-            _logger.LogInformation("UninstallPlugin files removed — Path={InstalledPath}", manifest.InstalledPath);
-        }
-
-        manifest.IsInstalled = false;
-        manifest.InstalledPath = null;
-        manifest.InstalledAt = null;
-        await _db.SaveChangesAsync(ct);
-
-        _logger.LogInformation(
-            "UninstallPlugin complete — ManifestId={ManifestId}, PluginName={PluginName}",
-            manifestId, manifest.Name);
+        Directory.Delete(pluginDir, recursive: true);
+        _logger.LogInformation("UninstallPlugin complete — PluginName={PluginName}, Path={InstalledPath}", pluginName, pluginDir);
+        return Task.CompletedTask;
     }
 
     public async Task<IReadOnlyList<PluginManifestEntity>> GetAvailablePluginsAsync(CancellationToken ct = default)
@@ -333,16 +313,6 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
             .Where(m => m.Repository.Enabled)
             .OrderBy(m => m.Name)
             .ThenByDescending(m => m.Version)
-            .AsNoTracking()
-            .ToListAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<PluginManifestEntity>> GetInstalledPluginsAsync(CancellationToken ct = default)
-    {
-        return await _db.PluginManifests
-            .Include(m => m.Repository)
-            .Where(m => m.IsInstalled)
-            .OrderBy(m => m.Name)
             .AsNoTracking()
             .ToListAsync(ct);
     }

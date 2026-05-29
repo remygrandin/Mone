@@ -145,7 +145,6 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.Property(x => x.License).HasMaxLength(64);
             e.Property(x => x.Homepage).HasMaxLength(2048);
             e.Property(x => x.TagsJson).HasMaxLength(1024);
-            e.Property(x => x.InstalledPath).HasMaxLength(1024);
             e.HasOne(x => x.Repository).WithMany(r => r.Manifests).HasForeignKey(x => x.RepositoryId);
             e.HasIndex(x => x.RepositoryId);
             e.HasIndex(x => new { x.RepositoryId, x.Name, x.Version }).IsUnique();

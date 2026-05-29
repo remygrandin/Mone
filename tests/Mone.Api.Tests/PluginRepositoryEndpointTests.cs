@@ -200,9 +200,8 @@ public class PluginRepositoryEndpointTests
     [Fact]
     public async Task SyncRepo_WithValidManifest_PopulatesPlugins()
     {
-        var manifestJson = BuildManifestJson(
-            name: $"SyncPlugin-{Guid.NewGuid():N}",
-            version: "2.0.0");
+        var pluginName = $"SyncPlugin-{Guid.NewGuid():N}";
+        var manifestJson = BuildManifestJson(name: pluginName, version: "2.0.0");
         var ghResponse = BuildGitHubManifestResponse(manifestJson);
 
         var handler = new MockHttpHandler();
@@ -225,9 +224,12 @@ public class PluginRepositoryEndpointTests
 
         var pluginsResp = await client.GetAsync("/api/plugins");
         Assert.Equal(HttpStatusCode.OK, pluginsResp.StatusCode);
-        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginManifestResponse[]>();
+        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
         Assert.NotNull(plugins);
-        Assert.Contains(plugins, p => p.Version == "2.0.0" && p.PluginType == "AlertChannel");
+        var entry = Assert.Single(plugins, p => p.Name == pluginName);
+        Assert.Equal("2.0.0", entry.LatestVersion);
+        Assert.Equal("AlertChannel", entry.PluginType);
+        Assert.Equal(PluginStatus.Available, entry.Status);
     }
 
     [Fact]
@@ -297,7 +299,7 @@ public class PluginRepositoryEndpointTests
     #region Install / Uninstall
 
     [Fact]
-    public async Task InstallPlugin_WithValidZip_SetsInstalled()
+    public async Task InstallPlugin_WithValidZip_Succeeds()
     {
         var (zipBytes, sha256) = CreateTestZip();
         var pluginName = $"InstallPlugin-{Guid.NewGuid():N}";
@@ -328,19 +330,17 @@ public class PluginRepositoryEndpointTests
         await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
 
         var pluginsResp = await client.GetAsync("/api/plugins");
-        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginManifestResponse[]>();
-        var manifest = Assert.Single(plugins!, p => p.Name == pluginName);
-        Assert.False(manifest.IsInstalled);
+        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
+        var entry = Assert.Single(plugins!, p => p.Name == pluginName);
+        Assert.Equal(PluginStatus.Available, entry.Status);
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(manifest.Id));
+            new InstallPluginRequest(entry.ManifestId!.Value));
         Assert.Equal(HttpStatusCode.OK, installResp.StatusCode);
 
         var pluginsAfter = await (await client.GetAsync("/api/plugins"))
-            .Content.ReadFromJsonAsync<PluginManifestResponse[]>();
-        var installed = Assert.Single(pluginsAfter!, p => p.Name == pluginName);
-        Assert.True(installed.IsInstalled);
-        Assert.NotNull(installed.InstalledAt);
+            .Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
+        Assert.Single(pluginsAfter!, p => p.Name == pluginName);
     }
 
     [Fact]
@@ -377,11 +377,11 @@ public class PluginRepositoryEndpointTests
         await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
 
         var pluginsResp = await client.GetAsync("/api/plugins");
-        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginManifestResponse[]>();
-        var manifest = Assert.Single(plugins!, p => p.Name == pluginName);
+        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
+        var entry = Assert.Single(plugins!, p => p.Name == pluginName);
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(manifest.Id));
+            new InstallPluginRequest(entry.ManifestId!.Value));
 
         Assert.Equal(HttpStatusCode.InternalServerError, installResp.StatusCode);
     }
@@ -400,7 +400,7 @@ public class PluginRepositoryEndpointTests
     }
 
     [Fact]
-    public async Task UninstallPlugin_RemovesInstallState()
+    public async Task UninstallPlugin_Succeeds()
     {
         var (zipBytes, sha256) = CreateTestZip();
         var pluginName = $"UninstallPlugin-{Guid.NewGuid():N}";
@@ -431,20 +431,20 @@ public class PluginRepositoryEndpointTests
         await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
 
         var plugins = await (await client.GetAsync("/api/plugins"))
-            .Content.ReadFromJsonAsync<PluginManifestResponse[]>();
-        var manifest = Assert.Single(plugins!, p => p.Name == pluginName);
+            .Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
+        var entry = Assert.Single(plugins!, p => p.Name == pluginName);
 
-        await client.PostAsJsonAsync("/api/plugins/install", new InstallPluginRequest(manifest.Id));
+        await client.PostAsJsonAsync("/api/plugins/install", new InstallPluginRequest(entry.ManifestId!.Value));
 
         var uninstallResp = await client.PostAsJsonAsync("/api/plugins/uninstall",
-            new InstallPluginRequest(manifest.Id));
+            new UninstallPluginRequest(pluginName));
         Assert.Equal(HttpStatusCode.OK, uninstallResp.StatusCode);
 
         var pluginsAfter = await (await client.GetAsync("/api/plugins"))
-            .Content.ReadFromJsonAsync<PluginManifestResponse[]>();
+            .Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
         var uninstalled = Assert.Single(pluginsAfter!, p => p.Name == pluginName);
-        Assert.False(uninstalled.IsInstalled);
-        Assert.Null(uninstalled.InstalledAt);
+        Assert.Equal(PluginStatus.Available, uninstalled.Status);
+        Assert.Null(uninstalled.InstalledVersion);
     }
 
     #endregion

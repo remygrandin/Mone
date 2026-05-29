@@ -55,6 +55,8 @@ services:
       Ldap__EmailAttribute: ${LDAP_EMAIL_ATTRIBUTE:-mail}
       Ldap__DisplayNameAttribute: ${LDAP_DISPLAY_NAME_ATTRIBUTE:-displayName}
       Api__PluginDirectory: /app/plugins
+    volumes:
+      - plugins:/app/plugins
     ports:
       - "8080:8080"
     depends_on:
@@ -77,6 +79,8 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
       ConnectionStrings__Nats: nats://nats:4222
       ProbeExecutor__PluginDirectory: /app/plugins
+    volumes:
+      - plugins:/app/plugins
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,6 +108,8 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
       ConnectionStrings__Nats: nats://nats:4222
       CheckerEngine__PluginDirectory: /app/plugins
+    volumes:
+      - plugins:/app/plugins
     depends_on:
       postgres:
         condition: service_healthy
@@ -126,6 +132,8 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
       ConnectionStrings__Nats: nats://nats:4222
       AlertEngine__PluginDirectory: /app/plugins
+    volumes:
+      - plugins:/app/plugins
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,3 +151,4 @@ services:
 volumes:
   pgdata:
   natsdata:
+  plugins:

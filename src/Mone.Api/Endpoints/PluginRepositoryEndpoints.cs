@@ -3,6 +3,9 @@ using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 using Mone.Infrastructure.Services;
+using Mone.Messaging;
+using Mone.Messaging.Messages;
+using NATS.Client.Core;
 
 namespace Mone.Api.Endpoints;
 
@@ -79,32 +82,219 @@ public static class PluginRepositoryEndpoints
             return Results.Ok();
         });
 
-        plugins.MapGet("/", async (IPluginRepositoryService svc) =>
+        plugins.MapGet("/", async (IPluginRepositoryService svc, IInstalledPluginQuery installed) =>
         {
-            var all = await svc.GetAvailablePluginsAsync();
-            var response = all.Select(ToManifestResponse).ToList();
-            return Results.Ok(response);
+            var manifests = await svc.GetAvailablePluginsAsync();
+            return Results.Ok(BuildCatalog(manifests, installed.List()));
         });
 
-        plugins.MapPost("/install", async (InstallPluginRequest request, IPluginRepositoryService svc) =>
+        plugins.MapPost("/install", async (
+            InstallPluginRequest request,
+            IPluginRepositoryService svc,
+            Mone.PluginEngine.PluginEngine engine,
+            INatsConnection nats,
+            MoneDbContext db,
+            IConfiguration config,
+            ILoggerFactory loggerFactory) =>
         {
             await svc.InstallPluginAsync(request.ManifestId);
+
+            var name = await db.PluginManifests
+                .Where(m => m.Id == request.ManifestId)
+                .Select(m => m.Name)
+                .FirstOrDefaultAsync();
+
+            ReloadEngineFromDisk(engine, config);
+
+            if (!string.IsNullOrEmpty(name))
+                await PublishReloadAsync(nats, loggerFactory, PluginReloadAction.Install, name);
+
             return Results.Ok();
         });
 
-        plugins.MapPost("/uninstall", async (InstallPluginRequest request, IPluginRepositoryService svc) =>
+        plugins.MapPost("/uninstall", async (
+            UninstallPluginRequest request,
+            IPluginRepositoryService svc,
+            Mone.PluginEngine.PluginEngine engine,
+            INatsConnection nats,
+            IConfiguration config,
+            ILoggerFactory loggerFactory) =>
         {
-            await svc.UninstallPluginAsync(request.ManifestId);
+            UnloadEngineForPlugin(engine, config, request.Name);
+            await svc.UninstallPluginAsync(request.Name);
+            await PublishReloadAsync(nats, loggerFactory, PluginReloadAction.Uninstall, request.Name);
             return Results.Ok();
         });
+
+        plugins.MapPost("/reload", (
+            Mone.PluginEngine.PluginEngine engine,
+            IConfiguration config) =>
+        {
+            ReloadEngineFromDisk(engine, config);
+            return Results.Ok();
+        });
+    }
+
+    private static List<PluginCatalogResponse> BuildCatalog(
+        IReadOnlyList<PluginManifestEntity> manifests,
+        IReadOnlyList<InstalledPluginInfo> installed)
+    {
+        var installedByName = installed.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+
+        var latestByName = manifests
+            .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(m => m, ManifestVersionComparer.Instance).First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        var catalog = new List<PluginCatalogResponse>();
+
+        foreach (var (name, latest) in latestByName)
+        {
+            installedByName.TryGetValue(name, out var onDisk);
+            var status = ComputeStatus(latest.Version, onDisk?.Version);
+
+            catalog.Add(new PluginCatalogResponse(
+                Name: name,
+                Description: latest.Description,
+                PluginType: latest.PluginType,
+                Author: latest.Author,
+                License: latest.License,
+                Homepage: latest.Homepage,
+                Status: status,
+                ManifestId: latest.Id,
+                RepositoryId: latest.RepositoryId,
+                LatestVersion: latest.Version,
+                InstalledVersion: onDisk?.Version,
+                SyncedAt: latest.SyncedAt));
+        }
+
+        foreach (var (name, onDisk) in installedByName)
+        {
+            if (latestByName.ContainsKey(name)) continue;
+
+            catalog.Add(new PluginCatalogResponse(
+                Name: name,
+                Description: null,
+                PluginType: "Unknown",
+                Author: null,
+                License: null,
+                Homepage: null,
+                Status: PluginStatus.Installed,
+                ManifestId: null,
+                RepositoryId: null,
+                LatestVersion: null,
+                InstalledVersion: onDisk.Version,
+                SyncedAt: null));
+        }
+
+        return [.. catalog.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private static PluginStatus ComputeStatus(string latestVersion, string? installedVersion)
+    {
+        if (installedVersion is null) return PluginStatus.Available;
+        var cmp = SemverCompare(installedVersion, latestVersion);
+        return cmp < 0 ? PluginStatus.UpdateAvailable : PluginStatus.Installed;
+    }
+
+    private static async Task PublishReloadAsync(
+        INatsConnection nats,
+        ILoggerFactory loggerFactory,
+        PluginReloadAction action,
+        string pluginName)
+    {
+        var logger = loggerFactory.CreateLogger("Mone.Api.PluginReload");
+        try
+        {
+            await nats.PublishAsync(
+                MoneStreams.PluginReload.Subject,
+                new PluginReloadMessage(action, pluginName));
+            logger.LogInformation(
+                "Published PluginReload — Action={Action}, PluginName={PluginName}",
+                action, pluginName);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Failed to publish PluginReload — Action={Action}, PluginName={PluginName}",
+                action, pluginName);
+        }
+    }
+
+    private static string GetPluginDir(IConfiguration config) =>
+        Path.GetFullPath(config["Api:PluginDirectory"] ?? "plugins");
+
+    private static void ReloadEngineFromDisk(Mone.PluginEngine.PluginEngine engine, IConfiguration config)
+    {
+        var dir = GetPluginDir(config);
+        Directory.CreateDirectory(dir);
+        engine.LoadPluginsFromDirectory(dir);
+    }
+
+    private static void UnloadEngineForPlugin(Mone.PluginEngine.PluginEngine engine, IConfiguration config, string name)
+    {
+        var pluginDir = Path.GetFullPath(Path.Combine(GetPluginDir(config), name));
+        var prefix = pluginDir + Path.DirectorySeparatorChar;
+        var toUnload = engine.LoadedAssemblyPaths
+            .Where(p => p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var dll in toUnload)
+            engine.UnloadPlugin(dll);
     }
 
     private static PluginRepositoryResponse ToResponse(PluginRepositoryEntity e) =>
         new(e.Id, e.Owner, e.Repo, e.Branch, e.DisplayName,
             e.Enabled, e.LastSyncedAt, e.LastSyncError, e.CreatedAt);
 
-    private static PluginManifestResponse ToManifestResponse(PluginManifestEntity e) =>
-        new(e.Id, e.RepositoryId, e.Name, e.Version, e.Description,
-            e.PluginType, e.Author, e.License, e.Homepage,
-            e.IsInstalled, e.InstalledAt, e.SyncedAt);
+    private static int SemverCompare(string a, string b)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return 0;
+
+        var (coreA, preA) = SplitVersion(a);
+        var (coreB, preB) = SplitVersion(b);
+
+        var coreCmp = CompareCore(coreA, coreB);
+        if (coreCmp != 0) return coreCmp;
+
+        if (string.IsNullOrEmpty(preA) && string.IsNullOrEmpty(preB)) return 0;
+        if (string.IsNullOrEmpty(preA)) return 1;
+        if (string.IsNullOrEmpty(preB)) return -1;
+        return string.Compare(preA, preB, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (string core, string prerelease) SplitVersion(string v)
+    {
+        var plus = v.IndexOf('+');
+        if (plus >= 0) v = v[..plus];
+        var dash = v.IndexOf('-');
+        return dash < 0 ? (v, string.Empty) : (v[..dash], v[(dash + 1)..]);
+    }
+
+    private static int CompareCore(string a, string b)
+    {
+        var pa = a.Split('.');
+        var pb = b.Split('.');
+        var n = Math.Max(pa.Length, pb.Length);
+        for (var i = 0; i < n; i++)
+        {
+            var xa = i < pa.Length && int.TryParse(pa[i], out var ia) ? ia : 0;
+            var xb = i < pb.Length && int.TryParse(pb[i], out var ib) ? ib : 0;
+            if (xa != xb) return xa.CompareTo(xb);
+        }
+        return 0;
+    }
+
+    private sealed class ManifestVersionComparer : IComparer<PluginManifestEntity>
+    {
+        public static readonly ManifestVersionComparer Instance = new();
+        public int Compare(PluginManifestEntity? x, PluginManifestEntity? y)
+        {
+            if (x is null && y is null) return 0;
+            if (x is null) return -1;
+            if (y is null) return 1;
+            return SemverCompare(x.Version, y.Version);
+        }
+    }
 }

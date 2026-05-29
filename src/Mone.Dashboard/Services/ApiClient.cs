@@ -204,6 +204,30 @@ public sealed class ApiClient
     public async Task TriggerProbeAsync(Guid hostId, string probePluginId) =>
         await PostAsync<TriggerProbeRequest, object?>($"api/hosts/{hostId}/trigger-probe", new TriggerProbeRequest(probePluginId));
 
+    public async Task<PluginRepositoryResponse[]> GetPluginRepositoriesAsync() =>
+        await GetAsync<PluginRepositoryResponse[]>("api/plugin-repos") ?? [];
+
+    public async Task<PluginRepositoryResponse?> AddPluginRepositoryAsync(AddRepositoryRequest request) =>
+        await PostAsync<AddRepositoryRequest, PluginRepositoryResponse>("api/plugin-repos", request);
+
+    public async Task DeletePluginRepositoryAsync(Guid id) =>
+        await DeleteAsync($"api/plugin-repos/{id}");
+
+    public async Task SyncPluginRepositoryAsync(Guid id) =>
+        await PostAsync<object?, object?>($"api/plugin-repos/{id}/sync", null);
+
+    public async Task<PluginCatalogResponse[]> GetPluginCatalogAsync() =>
+        await GetAsync<PluginCatalogResponse[]>("api/plugins") ?? [];
+
+    public async Task InstallPluginAsync(Guid manifestId) =>
+        await PostAsync<InstallPluginRequest, object?>("api/plugins/install", new InstallPluginRequest(manifestId));
+
+    public async Task UninstallPluginAsync(string name) =>
+        await PostAsync<UninstallPluginRequest, object?>("api/plugins/uninstall", new UninstallPluginRequest(name));
+
+    public async Task ReloadPluginsAsync() =>
+        await PostAsync<object?, object?>("api/plugins/reload", null);
+
     private async Task<TRes?> PutWithResponseAsync<TReq, TRes>(string url, TReq body)
     {
         var response = await _http.PutAsJsonAsync(url, body);

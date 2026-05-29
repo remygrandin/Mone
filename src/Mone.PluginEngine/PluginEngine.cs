@@ -20,6 +20,8 @@ public sealed class PluginEngine : IDisposable
 
     public PluginRegistry Registry => _registry;
 
+    public IReadOnlyList<string> LoadedAssemblyPaths => [.. _loaders.Keys];
+
     public PluginEngine(ILogger<PluginEngine> logger, bool enableHotReload = true)
     {
         _logger = logger;

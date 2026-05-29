@@ -20,6 +20,7 @@ builder.Services.AddSingleton<StatusTracker>();
 builder.Services.AddSingleton<CheckerDispatcher>();
 builder.Services.AddHostedService<StreamCheckerService>();
 builder.Services.AddHostedService<IntervalCheckerScheduler>();
+builder.Services.AddHostedService<Mone.PluginEngine.PluginReloadListener>();
 
 var host = builder.Build();
 

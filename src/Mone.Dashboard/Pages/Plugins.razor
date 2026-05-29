@@ -1,0 +1,308 @@
+@page "/plugins"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+<PageTitle>Plugins - Mone</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Plugins</MudText>
+
+<MudTabs Elevation="0" Rounded="true" PanelClass="pa-0 pt-4">
+    <MudTabPanel Text="Catalog" Icon="@Icons.Material.Filled.Extension">
+        @if (_catalogLoading)
+        {
+            <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+        }
+        else
+        {
+            <div class="d-flex align-center mb-4">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    @_catalog.Length plugin@(_catalog.Length == 1 ? "" : "s")
+                </MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="ReloadEngineAsync" Disabled="_busy">Reload engine</MudButton>
+            </div>
+
+            @if (_catalog.Length == 0)
+            {
+                <MudPaper Class="pa-8 d-flex flex-column align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.ExtensionOff" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                    <MudText Typo="Typo.body1" Class="mud-text-secondary">No plugins found. Add a repository and sync to discover plugins.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                <MudGrid>
+                    @foreach (var p in _catalog)
+                    {
+                        <MudItem xs="12" sm="6" md="4" lg="3">
+                            <MudCard Elevation="2" Class="d-flex flex-column" Style="height:100%;">
+                                <MudCardHeader>
+                                    <CardHeaderContent>
+                                        <div class="d-flex align-center" style="gap:8px;">
+                                            <MudText Typo="Typo.h6">@p.Name</MudText>
+                                            @{
+                                                var badge = StatusBadge(p.Status);
+                                            }
+                                            <MudChip T="string" Size="Size.Small" Color="@badge.color" Variant="Variant.Filled">@badge.label</MudChip>
+                                        </div>
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">@p.PluginType</MudText>
+                                    </CardHeaderContent>
+                                </MudCardHeader>
+                                <MudCardContent Class="flex-grow-1">
+                                    <MudText Typo="Typo.body2" Class="mb-2">@(p.Description ?? "No description")</MudText>
+                                    <div class="d-flex flex-column" style="gap:2px;">
+                                        @if (!string.IsNullOrEmpty(p.LatestVersion))
+                                        {
+                                            <MudText Typo="Typo.caption">Latest: <strong>@p.LatestVersion</strong></MudText>
+                                        }
+                                        @if (!string.IsNullOrEmpty(p.InstalledVersion))
+                                        {
+                                            <MudText Typo="Typo.caption">Installed: <strong>@p.InstalledVersion</strong></MudText>
+                                        }
+                                        @if (!string.IsNullOrEmpty(p.Author))
+                                        {
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">by @p.Author</MudText>
+                                        }
+                                    </div>
+                                </MudCardContent>
+                                <MudCardActions>
+                                    @switch (p.Status)
+                                    {
+                                        case PluginStatus.Available:
+                                            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
+                                                       StartIcon="@Icons.Material.Filled.Download"
+                                                       OnClick="@(() => InstallAsync(p))" Disabled="_busy || p.ManifestId is null">
+                                                Install
+                                            </MudButton>
+                                            break;
+                                        case PluginStatus.UpdateAvailable:
+                                            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                                                       StartIcon="@Icons.Material.Filled.SystemUpdate"
+                                                       OnClick="@(() => InstallAsync(p))" Disabled="_busy || p.ManifestId is null">
+                                                Update
+                                            </MudButton>
+                                            <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                                                       StartIcon="@Icons.Material.Filled.Delete"
+                                                       OnClick="@(() => UninstallAsync(p))" Disabled="_busy">
+                                                Uninstall
+                                            </MudButton>
+                                            break;
+                                        case PluginStatus.Installed:
+                                            <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Error"
+                                                       StartIcon="@Icons.Material.Filled.Delete"
+                                                       OnClick="@(() => UninstallAsync(p))" Disabled="_busy">
+                                                Uninstall
+                                            </MudButton>
+                                            break;
+                                    }
+                                </MudCardActions>
+                            </MudCard>
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="Repositories" Icon="@Icons.Material.Filled.Source">
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Add a repository</MudText>
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_newOwner" Label="Owner" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_newRepo" Label="Repository" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudTextField @bind-Value="_newBranch" Label="Branch" Placeholder="main" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_newDisplayName" Label="Display name (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="1" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                               OnClick="AddRepoAsync"
+                               Disabled="_busy || string.IsNullOrWhiteSpace(_newOwner) || string.IsNullOrWhiteSpace(_newRepo)">
+                        Add
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_reposLoading)
+        {
+            <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+        }
+        else if (_repos.Length == 0)
+        {
+            <MudPaper Class="pa-4 d-flex flex-column align-center">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">No repositories configured.</MudText>
+            </MudPaper>
+        }
+        else
+        {
+            <MudDataGrid Items="_repos" Hover="true" Dense="true" T="PluginRepositoryResponse">
+                <Columns>
+                    <PropertyColumn Property="x => x.DisplayName" Title="Name" />
+                    <PropertyColumn Property="x => x.Owner" Title="Owner" />
+                    <PropertyColumn Property="x => x.Repo" Title="Repo" />
+                    <PropertyColumn Property="x => x.Branch" Title="Branch" />
+                    <TemplateColumn Title="Last synced">
+                        <CellTemplate>
+                            @if (context.Item.LastSyncedAt is { } at)
+                            {
+                                <MudText Typo="Typo.caption">@at.ToLocalTime().ToString("g")</MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">never</MudText>
+                            }
+                            @if (!string.IsNullOrEmpty(context.Item.LastSyncError))
+                            {
+                                <MudTooltip Text="@context.Item.LastSyncError">
+                                    <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Small" Class="ml-1" />
+                                </MudTooltip>
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Actions">
+                        <CellTemplate>
+                            <MudIconButton Icon="@Icons.Material.Filled.Sync" Size="Size.Small"
+                                           OnClick="@(() => SyncRepoAsync(context.Item))" Disabled="_busy" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => DeleteRepoAsync(context.Item))" Disabled="_busy" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private bool _catalogLoading = true;
+    private bool _reposLoading = true;
+    private bool _busy;
+    private PluginCatalogResponse[] _catalog = [];
+    private PluginRepositoryResponse[] _repos = [];
+
+    private string _newOwner = "";
+    private string _newRepo = "";
+    private string _newBranch = "";
+    private string _newDisplayName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadCatalogAsync(), LoadReposAsync());
+    }
+
+    private async Task LoadCatalogAsync()
+    {
+        _catalogLoading = true;
+        try { _catalog = await Api.GetPluginCatalogAsync(); }
+        catch (Exception ex) { Snackbar.Add($"Failed to load catalog: {ex.Message}", Severity.Error); }
+        finally { _catalogLoading = false; }
+    }
+
+    private async Task LoadReposAsync()
+    {
+        _reposLoading = true;
+        try { _repos = await Api.GetPluginRepositoriesAsync(); }
+        catch (Exception ex) { Snackbar.Add($"Failed to load repositories: {ex.Message}", Severity.Error); }
+        finally { _reposLoading = false; }
+    }
+
+    private async Task AddRepoAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.AddPluginRepositoryAsync(new AddRepositoryRequest(
+                _newOwner.Trim(), _newRepo.Trim(),
+                string.IsNullOrWhiteSpace(_newBranch) ? null : _newBranch.Trim(),
+                string.IsNullOrWhiteSpace(_newDisplayName) ? null : _newDisplayName.Trim()));
+            _newOwner = _newRepo = _newBranch = _newDisplayName = "";
+            Snackbar.Add("Repository added — syncing in background", Severity.Success);
+            await LoadReposAsync();
+        }
+        catch (Exception ex) { Snackbar.Add($"Add failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task SyncRepoAsync(PluginRepositoryResponse repo)
+    {
+        _busy = true;
+        try
+        {
+            await Api.SyncPluginRepositoryAsync(repo.Id);
+            Snackbar.Add($"Synced {repo.DisplayName}", Severity.Success);
+            await Task.WhenAll(LoadReposAsync(), LoadCatalogAsync());
+        }
+        catch (Exception ex) { Snackbar.Add($"Sync failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteRepoAsync(PluginRepositoryResponse repo)
+    {
+        _busy = true;
+        try
+        {
+            await Api.DeletePluginRepositoryAsync(repo.Id);
+            Snackbar.Add($"Removed {repo.DisplayName}", Severity.Success);
+            await Task.WhenAll(LoadReposAsync(), LoadCatalogAsync());
+        }
+        catch (Exception ex) { Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task InstallAsync(PluginCatalogResponse p)
+    {
+        if (p.ManifestId is null) return;
+        _busy = true;
+        try
+        {
+            await Api.InstallPluginAsync(p.ManifestId.Value);
+            Snackbar.Add($"Installed {p.Name} {p.LatestVersion}", Severity.Success);
+            await LoadCatalogAsync();
+        }
+        catch (Exception ex) { Snackbar.Add($"Install failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task UninstallAsync(PluginCatalogResponse p)
+    {
+        _busy = true;
+        try
+        {
+            await Api.UninstallPluginAsync(p.Name);
+            Snackbar.Add($"Uninstalled {p.Name}", Severity.Success);
+            await LoadCatalogAsync();
+        }
+        catch (Exception ex) { Snackbar.Add($"Uninstall failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task ReloadEngineAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.ReloadPluginsAsync();
+            Snackbar.Add("Plugin engine reloaded", Severity.Success);
+            await LoadCatalogAsync();
+        }
+        catch (Exception ex) { Snackbar.Add($"Reload failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private static (string label, Color color) StatusBadge(PluginStatus s) => s switch
+    {
+        PluginStatus.Installed => ("Installed", Color.Success),
+        PluginStatus.UpdateAvailable => ("Update available", Color.Warning),
+        PluginStatus.Available => ("Available", Color.Default),
+        _ => ("Unknown", Color.Default)
+    };
+}
