@@ -179,6 +179,7 @@ app.MapGroupCheckerAssignmentEndpoints();
 app.MapEffectiveAssignmentEndpoints();
 app.MapAssignmentOverrideEndpoints();
 app.MapProbeTriggerEndpoints();
+app.MapHousekeepingEndpoints();
 
 app.MapFallbackToFile("index.html")
     .AllowAnonymous();

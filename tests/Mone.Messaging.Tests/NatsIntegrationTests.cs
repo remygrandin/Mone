@@ -4,22 +4,26 @@ using NATS.Client.JetStream;
 using NATS.Client.JetStream.Models;
 using Mone.Messaging.Extensions;
 using Mone.Messaging.Messages;
+using Mone.Messaging.Tests.Fixtures;
 using Mone.Contracts.Models;
 using Xunit;
 
 namespace Mone.Messaging.Tests;
 
 [Trait("Category", "Integration")]
+[Collection("NatsContainer")]
 public class NatsIntegrationTests : IAsyncLifetime
 {
-    private const string NatsUrl = "nats://localhost:14222";
+    private readonly NatsContainerFixture _natsFixture;
     private IHost _host = null!;
     private INatsJSContext _js = null!;
+
+    public NatsIntegrationTests(NatsContainerFixture natsFixture) => _natsFixture = natsFixture;
 
     public async Task InitializeAsync()
     {
         var builder = Host.CreateDefaultBuilder()
-            .ConfigureServices(services => services.AddMoneMessaging(NatsUrl));
+            .ConfigureServices(services => services.AddMoneMessaging(_natsFixture.NatsUrl));
 
         _host = builder.Build();
         await _host.StartAsync();
@@ -103,7 +107,7 @@ public class NatsIntegrationTests : IAsyncLifetime
         await _host.StopAsync();
 
         var builder = Host.CreateDefaultBuilder()
-            .ConfigureServices(services => services.AddMoneMessaging(NatsUrl));
+            .ConfigureServices(services => services.AddMoneMessaging(_natsFixture.NatsUrl));
 
         using var host2 = builder.Build();
         await host2.StartAsync();

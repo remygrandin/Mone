@@ -1,0 +1,162 @@
+@page "/housekeeping"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>Housekeeping - Mone</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Housekeeping</MudText>
+
+<MudGrid Spacing="2" Class="mb-4">
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Database size</MudText>
+            @if (_dbSize is null)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+            }
+            else
+            {
+                <MudText Typo="Typo.h4">@_dbSize.TotalPretty</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_dbSize.TotalBytes.ToString("N0") bytes</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="6" Class="d-flex align-end justify-end">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.Analytics"
+                   OnClick="AssessAsync" Disabled="_busy">
+            @(_report is null ? "Assess cleanup opportunities" : "Re-assess")
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@if (_dbSize is not null && _dbSize.Tables.Count > 0)
+{
+    <MudExpansionPanels Class="mb-4" Elevation="1">
+        <MudExpansionPanel Text="Top tables by size">
+            <MudSimpleTable Dense="true" Hover="true">
+                <thead>
+                    <tr><th>Table</th><th style="text-align:right">Size</th><th style="text-align:right">Bytes</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _dbSize.Tables)
+                    {
+                        <tr>
+                            <td><code>@t.Name</code></td>
+                            <td style="text-align:right">@t.Pretty</td>
+                            <td style="text-align:right" class="mud-text-secondary">@t.Bytes.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
+}
+
+@if (_assessing)
+{
+    <MudProgressLinear Indeterminate="true" Class="my-2" />
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Scanning tables — this may take a moment on large datasets…</MudText>
+}
+else if (_report is not null)
+{
+    var grouped = _report.Categories.GroupBy(c => c.Group).ToList();
+
+    @foreach (var grp in grouped)
+    {
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">@grp.Key</MudText>
+        <MudDataGrid Items="grp" T="HousekeepingCategory" Dense="true" Hover="true" Elevation="1" Bordered="false" FixedHeader="false">
+            <Columns>
+                <PropertyColumn Property="x => x.Label" Title="Category" />
+                <TemplateColumn Title="Rows" HeaderStyle="text-align: right; width: 140px;" CellStyle="text-align: right; width: 140px;">
+                    <CellTemplate>
+                        @if (context.Item.Count > 0)
+                        {
+                            <strong>@context.Item.Count.ToString("N0")</strong>
+                        }
+                        else
+                        {
+                            <span class="mud-text-secondary">0</span>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="Est. size" HeaderStyle="text-align: right; width: 140px;" CellStyle="text-align: right; width: 140px;">
+                    <CellTemplate>
+                        @if (context.Item.EstimatedPretty is { } p)
+                        {
+                            <span>~@p</span>
+                        }
+                        else
+                        {
+                            <span class="mud-text-secondary">—</span>
+                        }
+                    </CellTemplate>
+                </TemplateColumn>
+                <TemplateColumn Title="" HeaderStyle="width: 160px;" CellStyle="text-align: right; width: 160px;" Sortable="false" Filterable="false">
+                    <CellTemplate>
+                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined"
+                                   StartIcon="@Icons.Material.Filled.DeleteSweep"
+                                   Disabled="_busy || context.Item.Count == 0"
+                                   OnClick="@(() => CleanupAsync(context.Item))">
+                            Clean up
+                        </MudButton>
+                    </CellTemplate>
+                </TemplateColumn>
+            </Columns>
+        </MudDataGrid>
+    }
+}
+
+@code {
+    private bool _busy;
+    private bool _assessing;
+    private DbSizeReport? _dbSize;
+    private HousekeepingReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDbSizeAsync();
+    }
+
+    private async Task LoadDbSizeAsync()
+    {
+        try { _dbSize = await Api.GetDbSizeAsync(); }
+        catch (Exception ex) { Snackbar.Add($"Failed to load DB size: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task AssessAsync()
+    {
+        _assessing = true;
+        _busy = true;
+        try
+        {
+            _report = await Api.AssessHousekeepingAsync();
+            if (_report is not null) _dbSize = _report.DbSize;
+            Snackbar.Add("Assessment complete", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Assessment failed: {ex.Message}", Severity.Error); }
+        finally { _assessing = false; _busy = false; }
+    }
+
+    private async Task CleanupAsync(HousekeepingCategory cat)
+    {
+        var ok = await Dialogs.ShowMessageBox(
+            title: "Confirm cleanup",
+            markupMessage: new MarkupString($"Delete <strong>{cat.Count:N0}</strong> rows for:<br/><em>{cat.Label}</em>?<br/><br/>This cannot be undone."),
+            yesText: "Delete",
+            cancelText: "Cancel");
+        if (ok != true) return;
+
+        _busy = true;
+        try
+        {
+            var result = await Api.CleanupAsync(cat.Key);
+            Snackbar.Add($"Deleted {result?.DeletedRows ?? 0:N0} rows from {cat.Label}", Severity.Success);
+            await AssessAsync();
+        }
+        catch (Exception ex) { Snackbar.Add($"Cleanup failed: {ex.Message}", Severity.Error); }
+        finally { _busy = false; }
+    }
+}

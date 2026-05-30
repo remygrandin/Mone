@@ -82,6 +82,19 @@ public static class PluginRepositoryEndpoints
             return Results.Ok();
         });
 
+        repos.MapPost("/sync-all", async (MoneDbContext db, IPluginRepositoryService svc) =>
+        {
+            var ids = await db.PluginRepositories
+                .Where(r => r.Enabled)
+                .Select(r => r.Id)
+                .ToListAsync();
+
+            foreach (var id in ids)
+                await svc.SyncRepositoryAsync(id);
+
+            return Results.Ok(new { synced = ids.Count });
+        });
+
         plugins.MapGet("/", async (IPluginRepositoryService svc, IInstalledPluginQuery installed) =>
         {
             var manifests = await svc.GetAvailablePluginsAsync();
@@ -126,11 +139,15 @@ public static class PluginRepositoryEndpoints
             return Results.Ok();
         });
 
-        plugins.MapPost("/reload", (
+        plugins.MapPost("/reload", async (
             Mone.PluginEngine.PluginEngine engine,
-            IConfiguration config) =>
+            IConfiguration config,
+            INatsConnection nats,
+            ILoggerFactory loggerFactory) =>
         {
+            EvictMissingFromEngine(engine, loggerFactory);
             ReloadEngineFromDisk(engine, config);
+            await PublishReloadAsync(nats, loggerFactory, PluginReloadAction.ReloadAll, string.Empty);
             return Results.Ok();
         });
     }
@@ -242,6 +259,19 @@ public static class PluginRepositoryEndpoints
             .ToList();
         foreach (var dll in toUnload)
             engine.UnloadPlugin(dll);
+    }
+
+    private static void EvictMissingFromEngine(Mone.PluginEngine.PluginEngine engine, ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("Mone.Api.PluginReload");
+        var missing = engine.LoadedAssemblyPaths
+            .Where(p => !File.Exists(p))
+            .ToList();
+        foreach (var dll in missing)
+        {
+            logger.LogInformation("Evicting plugin assembly no longer on disk: {Path}", dll);
+            engine.UnloadPlugin(dll);
+        }
     }
 
     private static PluginRepositoryResponse ToResponse(PluginRepositoryEntity e) =>

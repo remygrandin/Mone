@@ -137,7 +137,11 @@ public sealed class ApiClient
         }
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TRes>();
+        if (response.Content.Headers.ContentLength is 0) return default;
+        var payload = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(payload)) return default;
+        return System.Text.Json.JsonSerializer.Deserialize<TRes>(payload,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
     }
 
     private async Task PutAsync<TReq>(string url, TReq body)
@@ -216,6 +220,9 @@ public sealed class ApiClient
     public async Task SyncPluginRepositoryAsync(Guid id) =>
         await PostAsync<object?, object?>($"api/plugin-repos/{id}/sync", null);
 
+    public async Task SyncAllPluginRepositoriesAsync() =>
+        await PostAsync<object?, object?>("api/plugin-repos/sync-all", null);
+
     public async Task<PluginCatalogResponse[]> GetPluginCatalogAsync() =>
         await GetAsync<PluginCatalogResponse[]>("api/plugins") ?? [];
 
@@ -227,6 +234,15 @@ public sealed class ApiClient
 
     public async Task ReloadPluginsAsync() =>
         await PostAsync<object?, object?>("api/plugins/reload", null);
+
+    public async Task<DbSizeReport?> GetDbSizeAsync() =>
+        await GetAsync<DbSizeReport>("api/housekeeping/db-size");
+
+    public async Task<HousekeepingReport?> AssessHousekeepingAsync() =>
+        await PostAsync<object?, HousekeepingReport>("api/housekeeping/assess", null);
+
+    public async Task<CleanupResult?> CleanupAsync(string key) =>
+        await PostAsync<CleanupRequest, CleanupResult>("api/housekeeping/cleanup", new CleanupRequest(key));
 
     private async Task<TRes?> PutWithResponseAsync<TReq, TRes>(string url, TReq body)
     {

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Mone.Api.Models;
 using Mone.Api.Tests.Fixtures;
+using Mone.Infrastructure.Services;
 using Xunit;
 
 namespace Mone.Api.Tests;
@@ -12,8 +13,8 @@ public class AssignmentOverrideEndpointTests
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    private const int Direct = 0;
-    private const int Inherited = 1;
+    private const AssignmentSourceType Direct = AssignmentSourceType.Direct;
+    private const AssignmentSourceType Inherited = AssignmentSourceType.Inherited;
 
     private readonly ApiFixture _fixture;
 
@@ -236,7 +237,7 @@ public class AssignmentOverrideEndpointTests
         public string? ConfigJson { get; set; }
         public string? TargetAddressOverride { get; set; }
         public bool Enabled { get; set; }
-        public int SourceType { get; set; }
+        public AssignmentSourceType SourceType { get; set; }
         public Guid? SourceGroupId { get; set; }
     }
 
@@ -246,7 +247,7 @@ public class AssignmentOverrideEndpointTests
         public string CheckerPluginId { get; set; } = "";
         public string? ConfigJson { get; set; }
         public bool Enabled { get; set; }
-        public int SourceType { get; set; }
+        public AssignmentSourceType SourceType { get; set; }
         public Guid? SourceGroupId { get; set; }
     }
 }

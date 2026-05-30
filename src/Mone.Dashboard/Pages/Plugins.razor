@@ -15,13 +15,36 @@
         }
         else
         {
-            <div class="d-flex align-center mb-4">
+            <div class="d-flex align-center mb-2">
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">
-                    @_catalog.Length plugin@(_catalog.Length == 1 ? "" : "s")
+                    @FilteredCatalog.Count of @_catalog.Length plugin@(_catalog.Length == 1 ? "" : "s")
                 </MudText>
                 <MudSpacer />
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh"
-                           OnClick="ReloadEngineAsync" Disabled="_busy">Reload engine</MudButton>
+                           OnClick="ReloadAsync" Disabled="_busy">Reload</MudButton>
+            </div>
+
+            <div class="d-flex flex-column mb-4" style="gap:8px;">
+                <div class="d-flex align-center" style="gap:8px; flex-wrap:wrap;">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="min-width:60px;">State</MudText>
+                    <MudChipSet T="StateFilter" SelectedValue="_stateFilter" SelectedValueChanged="OnStateFilterChanged"
+                                CheckMark="true" Variant="Variant.Text" SelectionMode="SelectionMode.SingleSelection">
+                        <MudChip T="StateFilter" Value="StateFilter.All">All</MudChip>
+                        <MudChip T="StateFilter" Value="StateFilter.Installed">Installed</MudChip>
+                        <MudChip T="StateFilter" Value="StateFilter.Available">Available</MudChip>
+                        <MudChip T="StateFilter" Value="StateFilter.UpdateAvailable">Update available</MudChip>
+                    </MudChipSet>
+                </div>
+                <div class="d-flex align-center" style="gap:8px; flex-wrap:wrap;">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="min-width:60px;">Type</MudText>
+                    <MudChipSet T="TypeFilter" SelectedValue="_typeFilter" SelectedValueChanged="OnTypeFilterChanged"
+                                CheckMark="true" Variant="Variant.Text" SelectionMode="SelectionMode.SingleSelection">
+                        <MudChip T="TypeFilter" Value="TypeFilter.All">All</MudChip>
+                        <MudChip T="TypeFilter" Value="TypeFilter.Probe">Probe</MudChip>
+                        <MudChip T="TypeFilter" Value="TypeFilter.Checker">Checker</MudChip>
+                        <MudChip T="TypeFilter" Value="TypeFilter.Notification">Notifications</MudChip>
+                    </MudChipSet>
+                </div>
             </div>
 
             @if (_catalog.Length == 0)
@@ -31,10 +54,17 @@
                     <MudText Typo="Typo.body1" Class="mud-text-secondary">No plugins found. Add a repository and sync to discover plugins.</MudText>
                 </MudPaper>
             }
+            else if (FilteredCatalog.Count == 0)
+            {
+                <MudPaper Class="pa-8 d-flex flex-column align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.FilterAltOff" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                    <MudText Typo="Typo.body1" Class="mud-text-secondary">No plugins match the current filters.</MudText>
+                </MudPaper>
+            }
             else
             {
                 <MudGrid>
-                    @foreach (var p in _catalog)
+                    @foreach (var p in FilteredCatalog)
                     {
                         <MudItem xs="12" sm="6" md="4" lg="3">
                             <MudCard Elevation="2" Class="d-flex flex-column" Style="height:100%;">
@@ -194,6 +224,32 @@
     private string _newBranch = "";
     private string _newDisplayName = "";
 
+    private enum StateFilter { All, Installed, Available, UpdateAvailable }
+    private enum TypeFilter { All, Probe, Checker, Notification }
+
+    private StateFilter _stateFilter = StateFilter.All;
+    private TypeFilter _typeFilter = TypeFilter.All;
+
+    private void OnStateFilterChanged(StateFilter v) => _stateFilter = v;
+    private void OnTypeFilterChanged(TypeFilter v) => _typeFilter = v;
+
+    private List<PluginCatalogResponse> FilteredCatalog => _catalog.Where(p =>
+        (_stateFilter switch
+        {
+            StateFilter.Installed => p.Status == PluginStatus.Installed,
+            StateFilter.Available => p.Status == PluginStatus.Available,
+            StateFilter.UpdateAvailable => p.Status == PluginStatus.UpdateAvailable,
+            _ => true,
+        }) &&
+        (_typeFilter switch
+        {
+            TypeFilter.Probe => string.Equals(p.PluginType, "Probe", StringComparison.OrdinalIgnoreCase),
+            TypeFilter.Checker => string.Equals(p.PluginType, "Checker", StringComparison.OrdinalIgnoreCase),
+            TypeFilter.Notification => string.Equals(p.PluginType, "AlertChannel", StringComparison.OrdinalIgnoreCase)
+                                       || string.Equals(p.PluginType, "Notification", StringComparison.OrdinalIgnoreCase),
+            _ => true,
+        })).ToList();
+
     protected override async Task OnInitializedAsync()
     {
         await Task.WhenAll(LoadCatalogAsync(), LoadReposAsync());
@@ -285,14 +341,15 @@
         finally { _busy = false; }
     }
 
-    private async Task ReloadEngineAsync()
+    private async Task ReloadAsync()
     {
         _busy = true;
         try
         {
+            await Api.SyncAllPluginRepositoriesAsync();
             await Api.ReloadPluginsAsync();
-            Snackbar.Add("Plugin engine reloaded", Severity.Success);
-            await LoadCatalogAsync();
+            Snackbar.Add("Repositories synced and plugin engine reloaded", Severity.Success);
+            await Task.WhenAll(LoadReposAsync(), LoadCatalogAsync());
         }
         catch (Exception ex) { Snackbar.Add($"Reload failed: {ex.Message}", Severity.Error); }
         finally { _busy = false; }

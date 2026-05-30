@@ -79,6 +79,7 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
     public IServiceScopeFactory CreateScopeFactory()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddDbContext<MoneDbContext>(options =>
             options.UseNpgsql(PostgresConnectionString));
         services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();

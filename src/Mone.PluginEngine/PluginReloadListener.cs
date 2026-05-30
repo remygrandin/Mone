@@ -98,6 +98,27 @@ public sealed class PluginReloadListener : BackgroundService
                 foreach (var path in toUnload)
                     _engine.UnloadPlugin(path);
                 break;
+
+            case PluginReloadAction.ReloadAll:
+                _logger.LogInformation(
+                    "PluginReloadListener handling ReloadAll — PluginsDir={PluginsDir}",
+                    _pluginsBaseDir);
+                EvictMissing();
+                if (Directory.Exists(_pluginsBaseDir))
+                    _engine.LoadPluginsFromDirectory(_pluginsBaseDir);
+                break;
+        }
+    }
+
+    private void EvictMissing()
+    {
+        var missing = _engine.LoadedAssemblyPaths
+            .Where(p => !File.Exists(p))
+            .ToList();
+        foreach (var path in missing)
+        {
+            _logger.LogInformation("Evicting plugin assembly no longer on disk: {Path}", path);
+            _engine.UnloadPlugin(path);
         }
     }
 }
