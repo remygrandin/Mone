@@ -20,6 +20,7 @@
                     @FilteredCatalog.Count of @_catalog.Length plugin@(_catalog.Length == 1 ? "" : "s")
                 </MudText>
                 <MudSpacer />
+                <MudSwitch T="bool" @bind-Value="_showPrereleases" Color="Color.Primary" Label="Show prereleases" Class="mr-3" />
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh"
                            OnClick="ReloadAsync" Disabled="_busy">Reload</MudButton>
             </div>
@@ -66,6 +67,11 @@
                 <MudGrid>
                     @foreach (var p in FilteredCatalog)
                     {
+                        var visibleVersions = VisibleVersionsFor(p);
+                        var selectedId = SelectedVersionIdFor(p, visibleVersions);
+                        var selected = visibleVersions.FirstOrDefault(v => v.Id == selectedId);
+                        var action = ResolveAction(p, selected);
+
                         <MudItem xs="12" sm="6" md="4" lg="3">
                             <MudCard Elevation="2" Class="d-flex flex-column" Style="height:100%;">
                                 <MudCardHeader>
@@ -82,11 +88,7 @@
                                 </MudCardHeader>
                                 <MudCardContent Class="flex-grow-1">
                                     <MudText Typo="Typo.body2" Class="mb-2">@(p.Description ?? "No description")</MudText>
-                                    <div class="d-flex flex-column" style="gap:2px;">
-                                        @if (!string.IsNullOrEmpty(p.LatestVersion))
-                                        {
-                                            <MudText Typo="Typo.caption">Latest: <strong>@p.LatestVersion</strong></MudText>
-                                        }
+                                    <div class="d-flex flex-column mb-2" style="gap:2px;">
                                         @if (!string.IsNullOrEmpty(p.InstalledVersion))
                                         {
                                             <MudText Typo="Typo.caption">Installed: <strong>@p.InstalledVersion</strong></MudText>
@@ -96,36 +98,63 @@
                                             <MudText Typo="Typo.caption" Class="mud-text-secondary">by @p.Author</MudText>
                                         }
                                     </div>
+                                    @if (visibleVersions.Count > 0)
+                                    {
+                                        <MudSelect T="Guid" Value="selectedId" ValueChanged="@(id => OnVersionSelected(p.Name, id))"
+                                                   Label="Version" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                                            @foreach (var v in visibleVersions)
+                                            {
+                                                <MudSelectItem T="Guid" Value="v.Id">
+                                                    @v.Version @(v.IsPrerelease ? " (prerelease)" : "")
+                                                </MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    }
+                                    else if (p.Versions.Count > 0)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                            Only prerelease versions available — enable "Show prereleases" to select one.
+                                        </MudText>
+                                    }
                                 </MudCardContent>
                                 <MudCardActions>
-                                    @switch (p.Status)
+                                    @if (p.Status == PluginStatus.Installed && p.Versions.Count == 0)
                                     {
-                                        case PluginStatus.Available:
-                                            <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary"
-                                                       StartIcon="@Icons.Material.Filled.Download"
-                                                       OnClick="@(() => InstallAsync(p))" Disabled="_busy || p.ManifestId is null">
-                                                Install
+                                        @* Installed but no remote catalog (orphaned install) — uninstall only *@
+                                        <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Error"
+                                                   StartIcon="@Icons.Material.Filled.Delete"
+                                                   OnClick="@(() => UninstallAsync(p))" Disabled="_busy">
+                                            Uninstall
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        @if (action.Kind == ActionKind.Install || action.Kind == ActionKind.Update || action.Kind == ActionKind.Reinstall)
+                                        {
+                                            <MudButton Variant="Variant.Filled" Color="@action.Color"
+                                                       StartIcon="@action.Icon"
+                                                       OnClick="@(() => InstallSelectedAsync(p, selected!))"
+                                                       Disabled="_busy || selected is null">
+                                                @action.Label
                                             </MudButton>
-                                            break;
-                                        case PluginStatus.UpdateAvailable:
-                                            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
-                                                       StartIcon="@Icons.Material.Filled.SystemUpdate"
-                                                       OnClick="@(() => InstallAsync(p))" Disabled="_busy || p.ManifestId is null">
-                                                Update
-                                            </MudButton>
+                                        }
+                                        else
+                                        {
+                                            <MudTooltip Text="@action.Tooltip" Placement="Placement.Top">
+                                                <MudButton Variant="Variant.Outlined" Color="Color.Default" Disabled="true"
+                                                           StartIcon="@action.Icon">
+                                                    @action.Label
+                                                </MudButton>
+                                            </MudTooltip>
+                                        }
+                                        @if (!string.IsNullOrEmpty(p.InstalledVersion))
+                                        {
                                             <MudButton Variant="Variant.Outlined" Color="Color.Error"
                                                        StartIcon="@Icons.Material.Filled.Delete"
                                                        OnClick="@(() => UninstallAsync(p))" Disabled="_busy">
                                                 Uninstall
                                             </MudButton>
-                                            break;
-                                        case PluginStatus.Installed:
-                                            <MudButton FullWidth="true" Variant="Variant.Outlined" Color="Color.Error"
-                                                       StartIcon="@Icons.Material.Filled.Delete"
-                                                       OnClick="@(() => UninstallAsync(p))" Disabled="_busy">
-                                                Uninstall
-                                            </MudButton>
-                                            break;
+                                        }
                                     }
                                 </MudCardActions>
                             </MudCard>
@@ -216,8 +245,10 @@
     private bool _catalogLoading = true;
     private bool _reposLoading = true;
     private bool _busy;
+    private bool _showPrereleases;
     private PluginCatalogResponse[] _catalog = [];
     private PluginRepositoryResponse[] _repos = [];
+    private readonly Dictionary<string, Guid> _selectedVersionByName = new(StringComparer.OrdinalIgnoreCase);
 
     private string _newOwner = "";
     private string _newRepo = "";
@@ -226,6 +257,9 @@
 
     private enum StateFilter { All, Installed, Available, UpdateAvailable }
     private enum TypeFilter { All, Probe, Checker, Notification }
+    private enum ActionKind { Install, Update, Reinstall, UpToDate, BlockedDowngrade, BlockedNoStable }
+
+    private sealed record TileAction(ActionKind Kind, string Label, string Icon, Color Color, string? Tooltip = null);
 
     private StateFilter _stateFilter = StateFilter.All;
     private TypeFilter _typeFilter = TypeFilter.All;
@@ -250,6 +284,62 @@
             _ => true,
         })).ToList();
 
+    private IReadOnlyList<PluginVersionResponse> VisibleVersionsFor(PluginCatalogResponse p) =>
+        _showPrereleases
+            ? p.Versions
+            : p.Versions.Where(v => !v.IsPrerelease).ToList();
+
+    private Guid SelectedVersionIdFor(PluginCatalogResponse p, IReadOnlyList<PluginVersionResponse> visible)
+    {
+        if (_selectedVersionByName.TryGetValue(p.Name, out var explicitId) &&
+            visible.Any(v => v.Id == explicitId))
+            return explicitId;
+
+        // Default: prefer the version matching the latest stable; fall back to the
+        // first visible (which is already sorted descending).
+        var preferred = visible.FirstOrDefault(v => v.Version == p.LatestStableVersion)
+                        ?? visible.FirstOrDefault();
+        return preferred?.Id ?? Guid.Empty;
+    }
+
+    private void OnVersionSelected(string pluginName, Guid versionId) =>
+        _selectedVersionByName[pluginName] = versionId;
+
+    private TileAction ResolveAction(PluginCatalogResponse p, PluginVersionResponse? selected)
+    {
+        if (selected is null)
+        {
+            return new TileAction(
+                ActionKind.BlockedNoStable, "No version", Icons.Material.Filled.Block, Color.Default,
+                "No installable version is selected. Enable 'Show prereleases' if applicable.");
+        }
+
+        var installed = p.InstalledVersion;
+        if (string.IsNullOrEmpty(installed))
+        {
+            return new TileAction(ActionKind.Install, $"Install {selected.Version}",
+                Icons.Material.Filled.Download, Color.Primary);
+        }
+
+        var cmp = SemverCompare(installed, selected.Version);
+        if (cmp == 0)
+        {
+            return new TileAction(ActionKind.UpToDate, "Installed",
+                Icons.Material.Filled.CheckCircle, Color.Success,
+                "This version is already installed.");
+        }
+
+        if (cmp < 0)
+        {
+            return new TileAction(ActionKind.Update, $"Update to {selected.Version}",
+                Icons.Material.Filled.SystemUpdate, Color.Secondary);
+        }
+
+        return new TileAction(ActionKind.BlockedDowngrade,
+            $"Older than {installed}", Icons.Material.Filled.Block, Color.Default,
+            "Downgrades are not supported. Uninstall first, then install the older version.");
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await Task.WhenAll(LoadCatalogAsync(), LoadReposAsync());
@@ -258,7 +348,15 @@
     private async Task LoadCatalogAsync()
     {
         _catalogLoading = true;
-        try { _catalog = await Api.GetPluginCatalogAsync(); }
+        try
+        {
+            _catalog = await Api.GetPluginCatalogAsync();
+
+            // Drop stale per-tile selections (plugin disappeared from catalog).
+            var live = _catalog.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in _selectedVersionByName.Keys.Where(k => !live.Contains(k)).ToList())
+                _selectedVersionByName.Remove(key);
+        }
         catch (Exception ex) { Snackbar.Add($"Failed to load catalog: {ex.Message}", Severity.Error); }
         finally { _catalogLoading = false; }
     }
@@ -314,14 +412,13 @@
         finally { _busy = false; }
     }
 
-    private async Task InstallAsync(PluginCatalogResponse p)
+    private async Task InstallSelectedAsync(PluginCatalogResponse p, PluginVersionResponse version)
     {
-        if (p.ManifestId is null) return;
         _busy = true;
         try
         {
-            await Api.InstallPluginAsync(p.ManifestId.Value);
-            Snackbar.Add($"Installed {p.Name} {p.LatestVersion}", Severity.Success);
+            await Api.InstallPluginAsync(version.Id);
+            Snackbar.Add($"Installed {p.Name} {version.Version}", Severity.Success);
             await LoadCatalogAsync();
         }
         catch (Exception ex) { Snackbar.Add($"Install failed: {ex.Message}", Severity.Error); }
@@ -362,4 +459,42 @@
         PluginStatus.Available => ("Available", Color.Default),
         _ => ("Unknown", Color.Default)
     };
+
+    private static int SemverCompare(string a, string b)
+    {
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return 0;
+
+        var (coreA, preA) = SplitVersion(a);
+        var (coreB, preB) = SplitVersion(b);
+
+        var coreCmp = CompareCore(coreA, coreB);
+        if (coreCmp != 0) return coreCmp;
+
+        if (string.IsNullOrEmpty(preA) && string.IsNullOrEmpty(preB)) return 0;
+        if (string.IsNullOrEmpty(preA)) return 1;
+        if (string.IsNullOrEmpty(preB)) return -1;
+        return string.Compare(preA, preB, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (string core, string prerelease) SplitVersion(string v)
+    {
+        var plus = v.IndexOf('+');
+        if (plus >= 0) v = v[..plus];
+        var dash = v.IndexOf('-');
+        return dash < 0 ? (v, string.Empty) : (v[..dash], v[(dash + 1)..]);
+    }
+
+    private static int CompareCore(string a, string b)
+    {
+        var pa = a.Split('.');
+        var pb = b.Split('.');
+        var n = Math.Max(pa.Length, pb.Length);
+        for (var i = 0; i < n; i++)
+        {
+            var xa = i < pa.Length && int.TryParse(pa[i], out var ia) ? ia : 0;
+            var xb = i < pb.Length && int.TryParse(pb[i], out var ib) ? ib : 0;
+            if (xa != xb) return xa.CompareTo(xb);
+        }
+        return 0;
+    }
 }

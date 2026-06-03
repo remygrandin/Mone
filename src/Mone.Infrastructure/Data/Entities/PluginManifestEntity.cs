@@ -19,5 +19,9 @@ public sealed class PluginManifestEntity
     public string? TagsJson { get; set; }
     public DateTime SyncedAt { get; set; }
 
+    public required string ReleaseTag { get; set; }
+    public DateTime PublishedAt { get; set; }
+    public bool IsPrerelease { get; set; }
+
     public PluginRepositoryEntity Repository { get; set; } = null!;
 }

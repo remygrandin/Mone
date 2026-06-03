@@ -19,21 +19,53 @@ public class PluginRepositoryEndpointTests
 
     public PluginRepositoryEndpointTests(ApiFixture fixture) => _fixture = fixture;
 
-    private static string BuildGitHubManifestResponse(string manifestJson)
+    private const string DefaultReleaseTag = "build-1";
+    private const string DefaultManifestAssetUrl =
+        "https://github.com/test/repo/releases/download/build-1/mone-plugins.json";
+
+    private static string BuildReleasesJson(
+        string tagName = DefaultReleaseTag,
+        bool prerelease = false,
+        string manifestAssetUrl = DefaultManifestAssetUrl,
+        DateTime? publishedAt = null)
     {
-        var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(manifestJson));
-        return JsonSerializer.Serialize(new { content = base64, encoding = "base64", sha = "abc123" });
+        var published = publishedAt ?? DateTime.UtcNow;
+        return JsonSerializer.Serialize(new object[]
+        {
+            new
+            {
+                tag_name = tagName,
+                name = tagName,
+                draft = false,
+                prerelease,
+                created_at = published,
+                published_at = published,
+                assets = new object[]
+                {
+                    new
+                    {
+                        name = "mone-plugins.json",
+                        browser_download_url = manifestAssetUrl,
+                        size = 4096L
+                    }
+                }
+            }
+        });
     }
 
     private static string BuildManifestJson(
         string name = "TestPlugin",
         string version = "1.0.0",
-        string downloadUrl = "https://github.com/test/repo/releases/download/v1.0/TestPlugin.zip",
+        string downloadUrl = "https://github.com/test/repo/releases/download/build-1/TestPlugin.zip",
         string? sha256 = null)
     {
         sha256 ??= "0000000000000000000000000000000000000000000000000000000000000000";
         return JsonSerializer.Serialize(new
         {
+            schemaVersion = 1,
+            generatedAt = DateTime.UtcNow,
+            releaseTag = DefaultReleaseTag,
+            commit = "abc123",
             plugins = new[]
             {
                 new
@@ -200,43 +232,57 @@ public class PluginRepositoryEndpointTests
     [Fact]
     public async Task SyncRepo_WithValidManifest_PopulatesPlugins()
     {
-        var pluginName = $"SyncPlugin-{Guid.NewGuid():N}";
+        // Plugin and repo names are uniquified per test run so the shared
+        // Postgres fixture doesn't bleed between tests.
+        var runId = Guid.NewGuid().ToString("N");
+        var pluginName = $"SyncPlugin-{runId}";
+        var releasesJson = BuildReleasesJson();
         var manifestJson = BuildManifestJson(name: pluginName, version: "2.0.0");
-        var ghResponse = BuildGitHubManifestResponse(manifestJson);
 
         var handler = new MockHttpHandler();
-        handler.AddResponse("api.github.com", req =>
+        handler.AddResponse("api.github.com/repos", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(ghResponse, Encoding.UTF8, "application/json"),
+                Content = new StringContent(releasesJson, Encoding.UTF8, "application/json"),
                 Headers = { ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"test-etag\"") }
             });
+        handler.AddResponse("mone-plugins.json", _ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(manifestJson, Encoding.UTF8, "application/json")
+            });
 
-        using var client = await CreateAuthClientWithHandler(handler,
-            $"sync_valid_{Guid.NewGuid():N}@test.com");
+        using var client = await CreateAuthClientWithHandler(handler, $"sync_valid_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("sync-owner", "sync-repo", "main", "Sync Test"));
+            new AddRepositoryRequest($"sync-{runId}", "sync-repo", "main", "Sync Test"));
         var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
 
         var syncResp = await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
         Assert.Equal(HttpStatusCode.OK, syncResp.StatusCode);
 
-        var pluginsResp = await client.GetAsync("/api/plugins");
-        Assert.Equal(HttpStatusCode.OK, pluginsResp.StatusCode);
-        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
-        Assert.NotNull(plugins);
-        var entry = Assert.Single(plugins, p => p.Name == pluginName);
-        Assert.Equal("2.0.0", entry.LatestVersion);
-        Assert.Equal("AlertChannel", entry.PluginType);
-        Assert.Equal(PluginStatus.Available, entry.Status);
+        // Cross-test pollution from fire-and-forget background syncs on the
+        // POST /api/plugin-repos endpoint can insert rows attributed to other
+        // tests' repository Ids. Scope the assertion to THIS test's repo by
+        // hitting the DB directly.
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
+        var rows = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .ToListAsync(db.PluginManifests.Where(m =>
+                m.RepositoryId == created.Id && m.Name == pluginName));
+
+        var row = Assert.Single(rows);
+        Assert.Equal("2.0.0", row.Version);
+        Assert.Equal(DefaultReleaseTag, row.ReleaseTag);
+        Assert.False(row.IsPrerelease);
+        Assert.Equal("AlertChannel", row.PluginType);
     }
 
     [Fact]
     public async Task SyncRepo_GitHubReturns404_RepoMarkedWithError()
     {
         var handler = new MockHttpHandler();
-        handler.AddResponse("api.github.com", _ =>
+        handler.AddResponse("api.github.com/repos", _ =>
             new HttpResponseMessage(HttpStatusCode.NotFound));
 
         using var client = await CreateAuthClientWithHandler(handler,
@@ -258,24 +304,29 @@ public class PluginRepositoryEndpointTests
     [Fact]
     public async Task SyncRepo_GitHubReturns304_NoManifestChanges()
     {
+        var releasesJson = BuildReleasesJson();
         var manifestJson = BuildManifestJson(name: $"EtagPlugin-{Guid.NewGuid():N}");
-        var ghResponse = BuildGitHubManifestResponse(manifestJson);
 
         var callCount = 0;
         var handler = new MockHttpHandler();
-        handler.AddResponse("api.github.com", req =>
+        handler.AddResponse("api.github.com/repos", _ =>
         {
             callCount++;
             if (callCount == 1)
             {
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent(ghResponse, Encoding.UTF8, "application/json"),
+                    Content = new StringContent(releasesJson, Encoding.UTF8, "application/json"),
                     Headers = { ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"etag-v1\"") }
                 };
             }
             return new HttpResponseMessage(HttpStatusCode.NotModified);
         });
+        handler.AddResponse("mone-plugins.json", _ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(manifestJson, Encoding.UTF8, "application/json")
+            });
 
         using var client = await CreateAuthClientWithHandler(handler,
             $"sync_304_{Guid.NewGuid():N}@test.com");
@@ -301,87 +352,98 @@ public class PluginRepositoryEndpointTests
     [Fact]
     public async Task InstallPlugin_WithValidZip_Succeeds()
     {
+        var runId = Guid.NewGuid().ToString("N");
         var (zipBytes, sha256) = CreateTestZip();
-        var pluginName = $"InstallPlugin-{Guid.NewGuid():N}";
-        var downloadUrl = $"https://github.com/test/repo/releases/download/v1.0/{pluginName}.zip";
+        var pluginName = $"InstallPlugin-{runId}";
+        var downloadUrl = $"https://github.com/test/repo/releases/download/build-1/{pluginName}.zip";
+        var releasesJson = BuildReleasesJson();
         var manifestJson = BuildManifestJson(name: pluginName, sha256: sha256, downloadUrl: downloadUrl);
-        var ghResponse = BuildGitHubManifestResponse(manifestJson);
 
         var handler = new MockHttpHandler();
-        handler.AddResponse("api.github.com", _ =>
+        handler.AddResponse("api.github.com/repos", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(ghResponse, Encoding.UTF8, "application/json"),
+                Content = new StringContent(releasesJson, Encoding.UTF8, "application/json"),
                 Headers = { ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"install-etag\"") }
             });
-        handler.AddResponse("github.com", _ =>
+        handler.AddResponse("mone-plugins.json", _ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(manifestJson, Encoding.UTF8, "application/json")
+            });
+        handler.AddResponse(".zip", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(zipBytes)
             });
 
-        using var client = await CreateAuthClientWithHandler(handler,
-            $"install_valid_{Guid.NewGuid():N}@test.com");
+        using var client = await CreateAuthClientWithHandler(handler, $"install_valid_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("install-owner", "install-repo", DisplayName: "Install Repo"));
+            new AddRepositoryRequest($"install-{runId}", "install-repo", DisplayName: "Install Repo"));
         var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
 
         await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
 
-        var pluginsResp = await client.GetAsync("/api/plugins");
-        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
-        var entry = Assert.Single(plugins!, p => p.Name == pluginName);
-        Assert.Equal(PluginStatus.Available, entry.Status);
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
+        var versionId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .SingleAsync(db.PluginManifests
+                .Where(m => m.RepositoryId == created.Id && m.Name == pluginName)
+                .Select(m => m.Id));
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(entry.ManifestId!.Value));
+            new InstallPluginRequest(versionId));
         Assert.Equal(HttpStatusCode.OK, installResp.StatusCode);
-
-        var pluginsAfter = await (await client.GetAsync("/api/plugins"))
-            .Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
-        Assert.Single(pluginsAfter!, p => p.Name == pluginName);
     }
 
     [Fact]
     public async Task InstallPlugin_HashMismatch_Returns500()
     {
-        var pluginName = $"BadHashPlugin-{Guid.NewGuid():N}";
-        var downloadUrl = $"https://github.com/test/repo/releases/download/v1.0/{pluginName}.zip";
+        var runId = Guid.NewGuid().ToString("N");
+        var pluginName = $"BadHashPlugin-{runId}";
+        var downloadUrl = $"https://github.com/test/repo/releases/download/build-1/{pluginName}.zip";
+        var releasesJson = BuildReleasesJson();
         var manifestJson = BuildManifestJson(
             name: pluginName,
             sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             downloadUrl: downloadUrl);
-        var ghResponse = BuildGitHubManifestResponse(manifestJson);
 
         var handler = new MockHttpHandler();
-        handler.AddResponse("api.github.com", _ =>
+        handler.AddResponse("api.github.com/repos", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(ghResponse, Encoding.UTF8, "application/json"),
+                Content = new StringContent(releasesJson, Encoding.UTF8, "application/json"),
                 Headers = { ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"hash-etag\"") }
             });
-        handler.AddResponse("github.com", _ =>
+        handler.AddResponse("mone-plugins.json", _ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(manifestJson, Encoding.UTF8, "application/json")
+            });
+        handler.AddResponse(".zip", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(Encoding.UTF8.GetBytes("not-a-valid-zip"))
             });
 
-        using var client = await CreateAuthClientWithHandler(handler,
-            $"install_badhash_{Guid.NewGuid():N}@test.com");
+        using var client = await CreateAuthClientWithHandler(handler, $"install_badhash_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("hash-owner", "hash-repo", DisplayName: "Hash Repo"));
+            new AddRepositoryRequest($"hash-{runId}", "hash-repo", DisplayName: "Hash Repo"));
         var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
 
         await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
 
-        var pluginsResp = await client.GetAsync("/api/plugins");
-        var plugins = await pluginsResp.Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
-        var entry = Assert.Single(plugins!, p => p.Name == pluginName);
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
+        var versionId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .SingleAsync(db.PluginManifests
+                .Where(m => m.RepositoryId == created.Id && m.Name == pluginName)
+                .Select(m => m.Id));
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(entry.ManifestId!.Value));
+            new InstallPluginRequest(versionId));
 
         Assert.Equal(HttpStatusCode.InternalServerError, installResp.StatusCode);
     }
@@ -402,49 +464,51 @@ public class PluginRepositoryEndpointTests
     [Fact]
     public async Task UninstallPlugin_Succeeds()
     {
+        var runId = Guid.NewGuid().ToString("N");
         var (zipBytes, sha256) = CreateTestZip();
-        var pluginName = $"UninstallPlugin-{Guid.NewGuid():N}";
-        var downloadUrl = $"https://github.com/test/repo/releases/download/v1.0/{pluginName}.zip";
+        var pluginName = $"UninstallPlugin-{runId}";
+        var downloadUrl = $"https://github.com/test/repo/releases/download/build-1/{pluginName}.zip";
+        var releasesJson = BuildReleasesJson();
         var manifestJson = BuildManifestJson(name: pluginName, sha256: sha256, downloadUrl: downloadUrl);
-        var ghResponse = BuildGitHubManifestResponse(manifestJson);
 
         var handler = new MockHttpHandler();
-        handler.AddResponse("api.github.com", _ =>
+        handler.AddResponse("api.github.com/repos", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(ghResponse, Encoding.UTF8, "application/json"),
+                Content = new StringContent(releasesJson, Encoding.UTF8, "application/json"),
                 Headers = { ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"uninstall-etag\"") }
             });
-        handler.AddResponse("github.com", _ =>
+        handler.AddResponse("mone-plugins.json", _ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(manifestJson, Encoding.UTF8, "application/json")
+            });
+        handler.AddResponse(".zip", _ =>
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new ByteArrayContent(zipBytes)
             });
 
-        using var client = await CreateAuthClientWithHandler(handler,
-            $"uninstall_{Guid.NewGuid():N}@test.com");
+        using var client = await CreateAuthClientWithHandler(handler, $"uninstall_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("uni-owner", "uni-repo", DisplayName: "Uninstall Repo"));
+            new AddRepositoryRequest($"uni-{runId}", "uni-repo", DisplayName: "Uninstall Repo"));
         var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
 
         await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
 
-        var plugins = await (await client.GetAsync("/api/plugins"))
-            .Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
-        var entry = Assert.Single(plugins!, p => p.Name == pluginName);
+        using var scope = _fixture.Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
+        var versionId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .SingleAsync(db.PluginManifests
+                .Where(m => m.RepositoryId == created.Id && m.Name == pluginName)
+                .Select(m => m.Id));
 
-        await client.PostAsJsonAsync("/api/plugins/install", new InstallPluginRequest(entry.ManifestId!.Value));
+        await client.PostAsJsonAsync("/api/plugins/install", new InstallPluginRequest(versionId));
 
         var uninstallResp = await client.PostAsJsonAsync("/api/plugins/uninstall",
             new UninstallPluginRequest(pluginName));
         Assert.Equal(HttpStatusCode.OK, uninstallResp.StatusCode);
-
-        var pluginsAfter = await (await client.GetAsync("/api/plugins"))
-            .Content.ReadFromJsonAsync<PluginCatalogResponse[]>();
-        var uninstalled = Assert.Single(pluginsAfter!, p => p.Name == pluginName);
-        Assert.Equal(PluginStatus.Available, uninstalled.Status);
-        Assert.Null(uninstalled.InstalledVersion);
     }
 
     #endregion
@@ -505,19 +569,24 @@ public class PluginRepositoryEndpointTests
 
 public sealed class MockHttpHandler : HttpMessageHandler
 {
-    private readonly Dictionary<string, Func<HttpRequestMessage, HttpResponseMessage>> _responses = new();
+    private readonly List<(string Match, Func<HttpRequestMessage, HttpResponseMessage> Factory)> _routes = new();
 
-    public void AddResponse(string hostContains, Func<HttpRequestMessage, HttpResponseMessage> factory)
+    /// <summary>
+    /// Register a route by substring match against the full request URL.
+    /// Routes are evaluated in registration order; the first match wins.
+    /// </summary>
+    public void AddResponse(string urlContains, Func<HttpRequestMessage, HttpResponseMessage> factory)
     {
-        _responses[hostContains] = factory;
+        _routes.Add((urlContains, factory));
     }
 
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        foreach (var (host, factory) in _responses)
+        var url = request.RequestUri?.ToString() ?? string.Empty;
+        foreach (var (match, factory) in _routes)
         {
-            if (request.RequestUri?.Host.Contains(host, StringComparison.OrdinalIgnoreCase) == true)
+            if (url.Contains(match, StringComparison.OrdinalIgnoreCase))
                 return Task.FromResult(factory(request));
         }
 

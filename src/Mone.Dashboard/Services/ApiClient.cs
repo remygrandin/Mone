@@ -233,8 +233,8 @@ public sealed class ApiClient
     public async Task<PluginCatalogResponse[]> GetPluginCatalogAsync() =>
         await GetAsync<PluginCatalogResponse[]>("api/plugins") ?? [];
 
-    public async Task InstallPluginAsync(Guid manifestId) =>
-        await PostAsync<InstallPluginRequest, object?>("api/plugins/install", new InstallPluginRequest(manifestId));
+    public async Task InstallPluginAsync(Guid versionId) =>
+        await PostAsync<InstallPluginRequest, object?>("api/plugins/install", new InstallPluginRequest(versionId));
 
     public async Task UninstallPluginAsync(string name) =>
         await PostAsync<UninstallPluginRequest, object?>("api/plugins/uninstall", new UninstallPluginRequest(name));

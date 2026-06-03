@@ -36,6 +36,9 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
         _pluginsBaseDir = pluginsBaseDir ?? Path.Combine(AppContext.BaseDirectory, "plugins");
     }
 
+    private const int MaxReleasesPerSync = 10;
+    private const string ManifestAssetName = "mone-plugins.json";
+
     public async Task SyncRepositoryAsync(Guid repoId, CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -56,22 +59,21 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
             return;
         }
 
+        var client = _httpClientFactory.CreateClient("GitHub");
+
         try
         {
-            var branch = repo.Branch ?? "main";
-            var url = $"https://api.github.com/repos/{repo.Owner}/{repo.Repo}/contents/plugin-manifest.json?ref={branch}";
-
-            var client = _httpClientFactory.CreateClient("GitHub");
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mone", "1.0"));
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+            var releasesUrl = $"https://api.github.com/repos/{repo.Owner}/{repo.Repo}/releases?per_page={MaxReleasesPerSync}";
+            using var releasesRequest = new HttpRequestMessage(HttpMethod.Get, releasesUrl);
+            releasesRequest.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mone", "1.0"));
+            releasesRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
 
             if (!string.IsNullOrEmpty(repo.ETag))
-                request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(repo.ETag));
+                releasesRequest.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(repo.ETag));
 
-            using var response = await client.SendAsync(request, ct);
+            using var releasesResponse = await client.SendAsync(releasesRequest, ct);
 
-            if (response.StatusCode == HttpStatusCode.NotModified)
+            if (releasesResponse.StatusCode == HttpStatusCode.NotModified)
             {
                 repo.LastSyncedAt = DateTime.UtcNow;
                 repo.LastSyncError = null;
@@ -84,9 +86,9 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
                 return;
             }
 
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            if (releasesResponse.StatusCode == HttpStatusCode.NotFound)
             {
-                repo.LastSyncError = "Repository or manifest not found (404)";
+                repo.LastSyncError = "Repository not found (404)";
                 repo.LastSyncedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
 
@@ -97,112 +99,98 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
                 return;
             }
 
-            if (response.StatusCode == HttpStatusCode.Forbidden ||
-                response.StatusCode == (HttpStatusCode)429)
+            if (releasesResponse.StatusCode == HttpStatusCode.Forbidden ||
+                releasesResponse.StatusCode == (HttpStatusCode)429)
             {
-                repo.LastSyncError = $"Rate limited or forbidden ({(int)response.StatusCode})";
+                repo.LastSyncError = $"Rate limited or forbidden ({(int)releasesResponse.StatusCode})";
                 repo.LastSyncedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
 
                 sw.Stop();
                 _logger.LogWarning(
                     "SyncRepository rate-limited — RepositoryId={RepositoryId}, StatusCode={StatusCode}, Duration={Duration}ms",
-                    repoId, (int)response.StatusCode, sw.ElapsedMilliseconds);
+                    repoId, (int)releasesResponse.StatusCode, sw.ElapsedMilliseconds);
                 return;
             }
 
-            response.EnsureSuccessStatusCode();
+            releasesResponse.EnsureSuccessStatusCode();
 
-            var contentJson = await response.Content.ReadAsStringAsync(ct);
-            var ghContent = JsonSerializer.Deserialize<GitHubContentResponse>(contentJson, ManifestJsonOptions);
+            var releasesJson = await releasesResponse.Content.ReadAsStringAsync(ct);
+            var releases = JsonSerializer.Deserialize<List<GitHubRelease>>(releasesJson, ManifestJsonOptions)
+                           ?? [];
 
-            if (ghContent?.Content is null)
+            if (releases.Count == 0)
             {
-                repo.LastSyncError = "GitHub response missing content field";
+                repo.ETag = releasesResponse.Headers.ETag?.Tag;
+                repo.LastSyncError = "Repository has no releases";
                 repo.LastSyncedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
 
+                sw.Stop();
                 _logger.LogWarning(
-                    "SyncRepository failed — RepositoryId={RepositoryId}, Error=MissingContent",
-                    repoId);
+                    "SyncRepository — RepositoryId={RepositoryId}, no releases found", repoId);
                 return;
             }
 
-            var manifestBytes = Convert.FromBase64String(ghContent.Content.Replace("\n", ""));
-            var manifestJson = System.Text.Encoding.UTF8.GetString(manifestBytes);
-            var manifest = JsonSerializer.Deserialize<PluginManifestFile>(manifestJson, ManifestJsonOptions);
-
-            if (manifest?.Plugins is null || manifest.Plugins.Count == 0)
-            {
-                repo.LastSyncError = "Manifest contains no plugins";
-                repo.LastSyncedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync(ct);
-
-                _logger.LogWarning(
-                    "SyncRepository failed — RepositoryId={RepositoryId}, Error=EmptyManifest",
-                    repoId);
-                return;
-            }
-
-            var existingManifests = await _db.PluginManifests
+            var existingVersions = await _db.PluginManifests
                 .Where(m => m.RepositoryId == repoId)
                 .ToListAsync(ct);
 
-            var existingLookup = existingManifests
+            var existingLookup = existingVersions
                 .ToDictionary(m => (m.Name, m.Version));
 
+            var existingReleaseTags = existingVersions
+                .Select(m => m.ReleaseTag)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var now = DateTime.UtcNow;
-            foreach (var plugin in manifest.Plugins)
+            var totalPlugins = 0;
+            var skippedReleases = 0;
+
+            foreach (var release in releases)
             {
-                if (existingLookup.TryGetValue((plugin.Name, plugin.Version), out var existing))
+                if (release.Draft) continue;
+
+                if (release.TagName is null)
                 {
-                    existing.Description = plugin.Description;
-                    existing.PluginType = plugin.PluginType;
-                    existing.DownloadUrl = plugin.DownloadUrl;
-                    existing.Sha256 = plugin.Sha256;
-                    existing.FileSize = plugin.FileSize;
-                    existing.DependenciesJson = plugin.Dependencies is not null
-                        ? JsonSerializer.Serialize(plugin.Dependencies, ManifestJsonOptions)
-                        : null;
-                    existing.MinMoneVersion = plugin.MinMoneVersion;
-                    existing.Author = plugin.Author;
-                    existing.License = plugin.License;
-                    existing.Homepage = plugin.Homepage;
-                    existing.TagsJson = plugin.Tags is not null
-                        ? JsonSerializer.Serialize(plugin.Tags, ManifestJsonOptions)
-                        : null;
-                    existing.SyncedAt = now;
+                    skippedReleases++;
+                    continue;
                 }
-                else
+
+                // Releases are immutable once tagged with build-N; if we've ingested
+                // this tag before, every (name, version) in it is already in DB.
+                if (existingReleaseTags.Contains(release.TagName)) continue;
+
+                var manifestAsset = release.Assets?
+                    .FirstOrDefault(a => string.Equals(a.Name, ManifestAssetName, StringComparison.OrdinalIgnoreCase));
+
+                if (manifestAsset?.BrowserDownloadUrl is null)
                 {
-                    _db.PluginManifests.Add(new PluginManifestEntity
-                    {
-                        Id = Guid.NewGuid(),
-                        RepositoryId = repoId,
-                        Name = plugin.Name,
-                        Version = plugin.Version,
-                        Description = plugin.Description,
-                        PluginType = plugin.PluginType,
-                        DownloadUrl = plugin.DownloadUrl,
-                        Sha256 = plugin.Sha256,
-                        FileSize = plugin.FileSize,
-                        DependenciesJson = plugin.Dependencies is not null
-                            ? JsonSerializer.Serialize(plugin.Dependencies, ManifestJsonOptions)
-                            : null,
-                        MinMoneVersion = plugin.MinMoneVersion,
-                        Author = plugin.Author,
-                        License = plugin.License,
-                        Homepage = plugin.Homepage,
-                        TagsJson = plugin.Tags is not null
-                            ? JsonSerializer.Serialize(plugin.Tags, ManifestJsonOptions)
-                            : null,
-                        SyncedAt = now
-                    });
+                    skippedReleases++;
+                    _logger.LogDebug(
+                        "Release {Tag} on RepositoryId={RepositoryId} has no {Asset}, skipping",
+                        release.TagName, repoId, ManifestAssetName);
+                    continue;
+                }
+
+                var manifest = await FetchReleaseManifestAsync(client, manifestAsset.BrowserDownloadUrl, ct);
+                if (manifest?.Plugins is null || manifest.Plugins.Count == 0)
+                {
+                    skippedReleases++;
+                    continue;
+                }
+
+                var publishedAt = release.PublishedAt ?? release.CreatedAt ?? now;
+
+                foreach (var plugin in manifest.Plugins)
+                {
+                    UpsertVersion(repoId, release.TagName, publishedAt, release.Prerelease,
+                        plugin, existingLookup, now);
+                    totalPlugins++;
                 }
             }
 
-            var etag = response.Headers.ETag?.Tag;
-            repo.ETag = etag;
+            repo.ETag = releasesResponse.Headers.ETag?.Tag;
             repo.LastSyncedAt = now;
             repo.LastSyncError = null;
 
@@ -210,8 +198,9 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
 
             sw.Stop();
             _logger.LogInformation(
-                "SyncRepository complete — RepositoryId={RepositoryId}, PluginCount={PluginCount}, Duration={Duration}ms, ETag={ETag}",
-                repoId, manifest.Plugins.Count, sw.ElapsedMilliseconds, etag);
+                "SyncRepository complete — RepositoryId={RepositoryId}, ReleasesScanned={ReleasesScanned}, " +
+                "ReleasesSkipped={ReleasesSkipped}, PluginsIngested={PluginsIngested}, Duration={Duration}ms",
+                repoId, releases.Count, skippedReleases, totalPlugins, sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
@@ -225,6 +214,86 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
                 repoId, sw.ElapsedMilliseconds);
             throw;
         }
+    }
+
+    private async Task<PluginManifestFile?> FetchReleaseManifestAsync(
+        HttpClient client, string assetUrl, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, assetUrl);
+        request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mone", "1.0"));
+
+        using var response = await client.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Failed to fetch release manifest from {Url}: {StatusCode}",
+                assetUrl, response.StatusCode);
+            return null;
+        }
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        return JsonSerializer.Deserialize<PluginManifestFile>(json, ManifestJsonOptions);
+    }
+
+    private void UpsertVersion(
+        Guid repoId,
+        string releaseTag,
+        DateTime publishedAt,
+        bool isPrerelease,
+        PluginEntry plugin,
+        Dictionary<(string, string), PluginManifestEntity> existingLookup,
+        DateTime now)
+    {
+        if (existingLookup.TryGetValue((plugin.Name, plugin.Version), out var existing))
+        {
+            existing.Description = plugin.Description;
+            existing.PluginType = plugin.PluginType;
+            existing.DownloadUrl = plugin.DownloadUrl;
+            existing.Sha256 = plugin.Sha256;
+            existing.FileSize = plugin.FileSize;
+            existing.DependenciesJson = plugin.Dependencies is not null
+                ? JsonSerializer.Serialize(plugin.Dependencies, ManifestJsonOptions)
+                : null;
+            existing.MinMoneVersion = plugin.MinMoneVersion;
+            existing.Author = plugin.Author;
+            existing.License = plugin.License;
+            existing.Homepage = plugin.Homepage;
+            existing.TagsJson = plugin.Tags is not null
+                ? JsonSerializer.Serialize(plugin.Tags, ManifestJsonOptions)
+                : null;
+            existing.SyncedAt = now;
+            existing.ReleaseTag = releaseTag;
+            existing.PublishedAt = publishedAt;
+            existing.IsPrerelease = isPrerelease;
+            return;
+        }
+
+        _db.PluginManifests.Add(new PluginManifestEntity
+        {
+            Id = Guid.NewGuid(),
+            RepositoryId = repoId,
+            Name = plugin.Name,
+            Version = plugin.Version,
+            Description = plugin.Description,
+            PluginType = plugin.PluginType,
+            DownloadUrl = plugin.DownloadUrl,
+            Sha256 = plugin.Sha256,
+            FileSize = plugin.FileSize,
+            DependenciesJson = plugin.Dependencies is not null
+                ? JsonSerializer.Serialize(plugin.Dependencies, ManifestJsonOptions)
+                : null,
+            MinMoneVersion = plugin.MinMoneVersion,
+            Author = plugin.Author,
+            License = plugin.License,
+            Homepage = plugin.Homepage,
+            TagsJson = plugin.Tags is not null
+                ? JsonSerializer.Serialize(plugin.Tags, ManifestJsonOptions)
+                : null,
+            SyncedAt = now,
+            ReleaseTag = releaseTag,
+            PublishedAt = publishedAt,
+            IsPrerelease = isPrerelease
+        });
     }
 
     public async Task InstallPluginAsync(Guid manifestId, CancellationToken ct = default)
@@ -318,10 +387,19 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
     }
 }
 
-internal sealed record GitHubContentResponse(
-    string? Content,
-    string? Encoding,
-    string? Sha);
+internal sealed record GitHubRelease(
+    [property: JsonPropertyName("tag_name")] string? TagName,
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("draft")] bool Draft,
+    [property: JsonPropertyName("prerelease")] bool Prerelease,
+    [property: JsonPropertyName("created_at")] DateTime? CreatedAt,
+    [property: JsonPropertyName("published_at")] DateTime? PublishedAt,
+    [property: JsonPropertyName("assets")] IReadOnlyList<GitHubReleaseAsset>? Assets);
+
+internal sealed record GitHubReleaseAsset(
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("browser_download_url")] string? BrowserDownloadUrl,
+    [property: JsonPropertyName("size")] long? Size);
 
 public sealed record PluginManifestFile(
     [property: JsonPropertyName("plugins")] IReadOnlyList<PluginEntry> Plugins);

@@ -104,6 +104,7 @@ public sealed class PluginLoader : IDisposable
     {
         var pluginId = $"{plugin.Name}@{plugin.Version}";
         var configManifest = ExtractConfigManifest(plugin);
+        var infoVersion = ReadInformationalVersion(type.Assembly);
 
         if (typeof(IProbePlugin).IsAssignableFrom(type))
         {
@@ -113,6 +114,7 @@ public sealed class PluginLoader : IDisposable
                 PluginId = pluginId,
                 Name = plugin.Name,
                 Version = plugin.Version,
+                InformationalVersion = infoVersion,
                 Description = plugin.Description,
                 PluginTypeName = type.FullName!,
                 Kind = PluginKind.Probe,
@@ -132,6 +134,7 @@ public sealed class PluginLoader : IDisposable
                 PluginId = pluginId,
                 Name = plugin.Name,
                 Version = plugin.Version,
+                InformationalVersion = infoVersion,
                 Description = plugin.Description,
                 PluginTypeName = type.FullName!,
                 Kind = PluginKind.Checker,
@@ -149,6 +152,7 @@ public sealed class PluginLoader : IDisposable
                 PluginId = pluginId,
                 Name = plugin.Name,
                 Version = plugin.Version,
+                InformationalVersion = infoVersion,
                 Description = plugin.Description,
                 PluginTypeName = type.FullName!,
                 Kind = PluginKind.Notification,
@@ -158,6 +162,14 @@ public sealed class PluginLoader : IDisposable
         }
 
         return null;
+    }
+
+    private static string? ReadInformationalVersion(Assembly assembly)
+    {
+        var raw = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var plus = raw.IndexOf('+');
+        return plus >= 0 ? raw[..plus] : raw;
     }
 
     private static ConfigManifest? ExtractConfigManifest(IPlugin plugin)

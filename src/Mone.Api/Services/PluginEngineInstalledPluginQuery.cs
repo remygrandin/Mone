@@ -6,6 +6,10 @@ public sealed class PluginEngineInstalledPluginQuery(Mone.PluginEngine.PluginEng
 {
     public IReadOnlyList<InstalledPluginInfo> List() =>
         engine.Registry.GetAll()
-            .Select(r => new InstalledPluginInfo(r.Metadata.Name, r.Metadata.Version.ToString()))
+            .Select(r => new InstalledPluginInfo(
+                r.Metadata.Name,
+                !string.IsNullOrWhiteSpace(r.Metadata.InformationalVersion)
+                    ? r.Metadata.InformationalVersion!
+                    : r.Metadata.Version.ToString()))
             .ToList();
 }

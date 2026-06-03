@@ -110,10 +110,10 @@ public static class PluginRepositoryEndpoints
             IConfiguration config,
             ILoggerFactory loggerFactory) =>
         {
-            await svc.InstallPluginAsync(request.ManifestId);
+            await svc.InstallPluginAsync(request.VersionId);
 
             var name = await db.PluginManifests
-                .Where(m => m.Id == request.ManifestId)
+                .Where(m => m.Id == request.VersionId)
                 .Select(m => m.Name)
                 .FirstOrDefaultAsync();
 
@@ -158,38 +158,54 @@ public static class PluginRepositoryEndpoints
     {
         var installedByName = installed.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
 
-        var latestByName = manifests
-            .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderByDescending(m => m, ManifestVersionComparer.Instance).First(),
-                StringComparer.OrdinalIgnoreCase);
+        var grouped = manifests
+            .GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase);
 
         var catalog = new List<PluginCatalogResponse>();
 
-        foreach (var (name, latest) in latestByName)
+        foreach (var group in grouped)
         {
-            installedByName.TryGetValue(name, out var onDisk);
-            var status = ComputeStatus(latest.Version, onDisk?.Version);
+            var sortedVersions = group
+                .OrderByDescending(m => m, ManifestVersionComparer.Instance)
+                .ToList();
+
+            var latest = sortedVersions[0];
+            var latestStable = sortedVersions.FirstOrDefault(m => !m.IsPrerelease);
+            installedByName.TryGetValue(group.Key, out var onDisk);
+
+            // Status uses latest stable for "update available" — pre-releases
+            // shouldn't pop the badge by default. If no stable exists, fall
+            // back to the absolute latest so users on a prerelease still see
+            // newer prereleases.
+            var referenceVersion = latestStable?.Version ?? latest.Version;
+            var status = ComputeStatus(referenceVersion, onDisk?.Version);
 
             catalog.Add(new PluginCatalogResponse(
-                Name: name,
+                Name: group.Key,
                 Description: latest.Description,
                 PluginType: latest.PluginType,
                 Author: latest.Author,
                 License: latest.License,
                 Homepage: latest.Homepage,
                 Status: status,
-                ManifestId: latest.Id,
                 RepositoryId: latest.RepositoryId,
                 LatestVersion: latest.Version,
+                LatestStableVersion: latestStable?.Version,
                 InstalledVersion: onDisk?.Version,
-                SyncedAt: latest.SyncedAt));
+                SyncedAt: latest.SyncedAt,
+                Versions: sortedVersions.Select(v => new PluginVersionResponse(
+                    Id: v.Id,
+                    Version: v.Version,
+                    ReleaseTag: v.ReleaseTag,
+                    PublishedAt: v.PublishedAt,
+                    IsPrerelease: v.IsPrerelease,
+                    Sha256: v.Sha256,
+                    FileSize: v.FileSize)).ToList()));
         }
 
         foreach (var (name, onDisk) in installedByName)
         {
-            if (latestByName.ContainsKey(name)) continue;
+            if (catalog.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))) continue;
 
             catalog.Add(new PluginCatalogResponse(
                 Name: name,
@@ -199,11 +215,12 @@ public static class PluginRepositoryEndpoints
                 License: null,
                 Homepage: null,
                 Status: PluginStatus.Installed,
-                ManifestId: null,
                 RepositoryId: null,
                 LatestVersion: null,
+                LatestStableVersion: null,
                 InstalledVersion: onDisk.Version,
-                SyncedAt: null));
+                SyncedAt: null,
+                Versions: []));
         }
 
         return [.. catalog.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)];
