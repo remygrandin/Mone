@@ -16,7 +16,7 @@ public static class PluginRepositoryEndpoints
         var repos = app.MapGroup("/api/plugin-repos").RequireAuthorization();
         var plugins = app.MapGroup("/api/plugins").RequireAuthorization();
 
-        repos.MapPost("/", async (AddRepositoryRequest request, MoneDbContext db, IPluginRepositoryService svc) =>
+        repos.MapPost("/", async (AddRepositoryRequest request, MoneDbContext db, IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory) =>
         {
             var entity = new PluginRepositoryEntity
             {
@@ -31,7 +31,18 @@ public static class PluginRepositoryEndpoints
             db.PluginRepositories.Add(entity);
             await db.SaveChangesAsync();
 
-            _ = Task.Run(() => svc.SyncRepositoryAsync(entity.Id));
+            var repositoryId = entity.Id;
+            _ = Task.Run(async () =>
+            {
+                using var scope = scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<IPluginRepositoryService>();
+                try { await svc.SyncRepositoryAsync(repositoryId); }
+                catch (Exception ex)
+                {
+                    loggerFactory.CreateLogger("Mone.Api.PluginRepository")
+                        .LogWarning(ex, "Background sync failed for repository {RepositoryId}", repositoryId);
+                }
+            });
 
             return Results.Created($"/api/plugin-repos/{entity.Id}", ToResponse(entity));
         });
