@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Mone.Api.Models;
+using Mone.Api.Services;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
@@ -112,19 +113,28 @@ public static class HostGroupEndpoints
             return Results.NoContent();
         });
 
-        group.MapPost("/{id:guid}/members", async (Guid id, AddGroupMemberRequest request, MoneDbContext db) =>
+        group.MapPost("/{id:guid}/members", async (
+            Guid id,
+            AddGroupMemberRequest request,
+            MoneDbContext db,
+            ProbeAssignmentNameValidator nameValidator,
+            CancellationToken ct) =>
         {
-            var hostGroup = await db.HostGroups.FindAsync(id);
+            var hostGroup = await db.HostGroups.FindAsync(new object[] { id }, ct);
             if (hostGroup is null) return Results.NotFound();
 
-            var host = await db.Hosts.FindAsync(request.HostId);
+            var host = await db.Hosts.FindAsync(new object[] { request.HostId }, ct);
             if (host is null) return Results.BadRequest("Host not found.");
 
-            if (await db.HostGroupMemberships.AnyAsync(m => m.GroupId == id && m.HostId == request.HostId))
+            if (await db.HostGroupMemberships.AnyAsync(m => m.GroupId == id && m.HostId == request.HostId, ct))
                 return Results.Conflict("Host is already a member of this group.");
 
+            var collision = await nameValidator.ValidateMembershipAddAsync(id, request.HostId, ct);
+            if (collision is not null)
+                return Results.BadRequest(new { error = collision });
+
             db.HostGroupMemberships.Add(new GroupMembershipEntity { GroupId = id, HostId = request.HostId });
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
 
             return Results.Created($"/api/host-groups/{id}/members/{request.HostId}", null);
         });

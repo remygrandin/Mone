@@ -15,6 +15,9 @@
             }
         </MudSelect>
 
+        <MudTextField @bind-Value="Model.Name" Label="Name" Required="true"
+                      HelperText="@($"Snake-case key: {ComputeSnake(Model.Name)}")" Class="mt-3" />
+
         <MudTextField @bind-Value="Model.ScheduleCron" Label="Schedule (Cron)" Required="true"
                       HelperText="e.g. */5 * * * * (every 5 minutes)" Class="mt-3" />
 
@@ -31,7 +34,7 @@
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
-                   Disabled="@(_selectedPlugin is null || string.IsNullOrWhiteSpace(Model.ScheduleCron))">
+                   Disabled="@(_selectedPlugin is null || string.IsNullOrWhiteSpace(Model.ScheduleCron) || string.IsNullOrWhiteSpace(Model.Name))">
             @(IsEdit ? "Save" : "Add")
         </MudButton>
     </DialogActions>
@@ -64,7 +67,11 @@
         _selectedPlugin = plugin;
         _configValues = new Dictionary<string, string>();
         if (plugin is not null)
+        {
             Model.ProbePluginId = plugin.PluginId;
+            if (string.IsNullOrWhiteSpace(Model.Name))
+                Model.Name = plugin.Name;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();
@@ -80,9 +87,47 @@
         MudDialog.Close(DialogResult.Ok(Model));
     }
 
+    private static string ComputeSnake(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "(name required)";
+        var sb = new System.Text.StringBuilder(raw.Length);
+        var lastUnderscore = true;
+        for (var i = 0; i < raw.Length; i++)
+        {
+            var c = raw[i];
+            if (i > 0 && IsBoundary(raw, i))
+            {
+                if (!lastUnderscore) { sb.Append('_'); lastUnderscore = true; }
+            }
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(char.ToLowerInvariant(c));
+                lastUnderscore = false;
+            }
+            else if (!lastUnderscore && sb.Length > 0)
+            {
+                sb.Append('_');
+                lastUnderscore = true;
+            }
+        }
+        while (sb.Length > 0 && sb[^1] == '_') sb.Length--;
+        return sb.Length == 0 ? "(invalid)" : sb.ToString();
+    }
+
+    private static bool IsBoundary(string s, int i)
+    {
+        if (i == 0) return false;
+        var p = s[i - 1]; var c = s[i];
+        if (char.IsUpper(c) && char.IsLower(p)) return true;
+        if (char.IsDigit(c) && char.IsLetter(p)) return true;
+        if (char.IsLetter(c) && char.IsDigit(p)) return true;
+        return false;
+    }
+
     public sealed class FormModel
     {
         public string ProbePluginId { get; set; } = "";
+        public string Name { get; set; } = "";
         public string ScheduleCron { get; set; } = "";
         public string? ConfigJson { get; set; }
         public bool Enabled { get; set; } = true;

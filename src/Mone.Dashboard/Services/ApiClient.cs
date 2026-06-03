@@ -199,6 +199,13 @@ public sealed class ApiClient
     public async Task<string[]> GetMetricKeysAsync(Guid hostId) =>
         await GetAsync<string[]>($"api/hosts/{hostId}/results/metric-keys") ?? [];
 
+    public async Task<MetricSeriesResponse?> GetMetricSeriesAsync(Guid hostId, string metricKey, int points = 60) =>
+        await GetAsync<MetricSeriesResponse>(
+            $"api/hosts/{hostId}/results/metrics/series?key={Uri.EscapeDataString(metricKey)}&points={points}");
+
+    public async Task<HostDeclaredMetric[]> GetDeclaredMetricsAsync(Guid hostId) =>
+        await GetAsync<HostDeclaredMetric[]>($"api/hosts/{hostId}/results/declared-metrics") ?? [];
+
     public async Task AddGroupMemberAsync(Guid groupId, Guid hostId) =>
         await PostAsync<AddGroupMemberRequest, object?>($"api/host-groups/{groupId}/members", new AddGroupMemberRequest(hostId));
 

@@ -64,7 +64,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -85,7 +85,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, child.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{parent.Id}/probes",
-            new CreateProbeAssignmentRequest("http", "*/10 * * * *"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -102,7 +102,7 @@ public class GroupAssignmentEndpointTests
         using var _ = client;
 
         var assignResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("http", "*/5 * * * *", TargetAddressOverride: "192.168.1.99"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/5 * * * *", TargetAddressOverride: "192.168.1.99"));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -121,9 +121,9 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
         await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("http", "*/10 * * * *"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"));
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
         Assert.Equal(2, effective.Probes.Length);
@@ -161,7 +161,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
 
         var before = await GetEffectiveAssignmentsAsync(client, hostId);
         Assert.Single(before.Probes);

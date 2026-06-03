@@ -19,7 +19,7 @@ public class InheritanceResolverTests
         await using var db = _fixture.CreateDbContext();
         var host = new HostEntity { Id = Guid.NewGuid(), Name = "h1", Address = "10.0.0.1", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
         db.Hosts.Add(host);
-        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), HostId = host.Id, ProbePluginId = "ping", ScheduleCron = "*/5 * * * *" });
+        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), HostId = host.Id, ProbePluginId = "ping", Name = "ping-direct", NameSnakeCase = "ping_direct", ScheduleCron = "*/5 * * * *" });
         db.CheckerAssignments.Add(new CheckerAssignmentEntity { Id = Guid.NewGuid(), HostId = host.Id, CheckerPluginId = "http" });
         await db.SaveChangesAsync();
 
@@ -44,7 +44,7 @@ public class InheritanceResolverTests
         db.Hosts.Add(host);
         db.HostGroups.Add(group);
         db.HostGroupMemberships.Add(new GroupMembershipEntity { GroupId = group.Id, HostId = host.Id });
-        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), GroupId = group.Id, ProbePluginId = "ping", ScheduleCron = "*/10 * * * *" });
+        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), GroupId = group.Id, ProbePluginId = "ping", Name = "ping-group", NameSnakeCase = "ping_group", ScheduleCron = "*/10 * * * *" });
         await db.SaveChangesAsync();
 
         var resolver = new InheritanceResolver(db, NullLogger<InheritanceResolver>.Instance);
@@ -66,8 +66,8 @@ public class InheritanceResolverTests
         db.Hosts.Add(host);
         db.HostGroups.AddRange(parentGroup, childGroup);
         db.HostGroupMemberships.Add(new GroupMembershipEntity { GroupId = childGroup.Id, HostId = host.Id });
-        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), GroupId = childGroup.Id, ProbePluginId = "ping-child", ScheduleCron = "*/5 * * * *" });
-        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), GroupId = parentGroup.Id, ProbePluginId = "ping-parent", ScheduleCron = "*/15 * * * *" });
+        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), GroupId = childGroup.Id, ProbePluginId = "ping-child", Name = "ping-child", NameSnakeCase = "ping_child", ScheduleCron = "*/5 * * * *" });
+        db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), GroupId = parentGroup.Id, ProbePluginId = "ping-parent", Name = "ping-parent", NameSnakeCase = "ping_parent", ScheduleCron = "*/15 * * * *" });
         await db.SaveChangesAsync();
 
         var resolver = new InheritanceResolver(db, NullLogger<InheritanceResolver>.Instance);

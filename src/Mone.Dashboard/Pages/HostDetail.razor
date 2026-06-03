@@ -77,6 +77,97 @@ else
     </MudCard>
 
     <MudExpansionPanels MultiExpansion="true">
+        <MudExpansionPanel Text="@($"Metrics ({_metricKeys.Length})")" Expanded="true">
+            @if (_metricKeys.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No numeric metrics recorded for this host yet.</MudAlert>
+            }
+            else
+            {
+                <MudExpansionPanels MultiExpansion="true" Dense="true" Elevation="0">
+                    @foreach (var key in _metricKeys)
+                    {
+                        var decl = ResolveDeclaration(key);
+                        var displayName = decl?.DisplayName ?? key;
+                        var unit = decl?.Unit;
+                        var mapping = _metricValueMaps.TryGetValue(key, out var mv) ? mv : null;
+                        <MudExpansionPanel @key="@key">
+                            <TitleContent>
+                                <div style="display:flex;align-items:center;gap:16px;width:100%;">
+                                    <div style="flex:1;display:flex;flex-direction:column;">
+                                        <MudText Typo="Typo.body1" Style="font-weight:500;">@displayName@(unit is null ? "" : $" ({unit})")</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@key</MudText>
+                                    </div>
+                                    <span style="flex:0 0 160px;text-align:center;">
+                                        @if (_metricSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
+                                        {
+                                            <Sparkline Points="@s.Points" Width="160" Height="32"
+                                                       Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" />
+                                        }
+                                        else if (_metricSeriesLoading.Contains(key))
+                                        {
+                                            <MudProgressLinear Indeterminate="true" Size="Size.Small" Class="my-2" />
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">no data</MudText>
+                                        }
+                                    </span>
+                                    <MudText Typo="Typo.body2" Color="Color.Primary" Style="flex:0 0 140px;text-align:right;font-variant-numeric:tabular-nums;">
+                                        @if (_metricSeries.TryGetValue(key, out var s2) && s2?.Latest is { } latest)
+                                        {
+                                            @FormatLatest(latest, unit, mapping)
+                                        }
+                                        else
+                                        {
+                                            <span class="mud-text-secondary">—</span>
+                                        }
+                                    </MudText>
+                                </div>
+                            </TitleContent>
+                            <ChildContent>
+                                @if (_metricSeries.TryGetValue(key, out var detail) && detail is not null && detail.Points.Length > 0)
+                                {
+                                    <MudGrid Spacing="2" Class="mb-2">
+                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Min</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@FormatStat(detail.Min, unit, mapping)</MudText></MudItem>
+                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Max</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@FormatStat(detail.Max, unit, mapping)</MudText></MudItem>
+                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Avg</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@FormatStat(detail.Avg, unit, mapping)</MudText></MudItem>
+                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Points</MudText>
+                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@detail.Count</MudText></MudItem>
+                                    </MudGrid>
+                                    <Sparkline Points="@detail.Points" Width="640" Height="180"
+                                               Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" IsDetail="true" />
+                                    @if (decl is not null)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
+                                            Produced by: @decl.ProbeAssignmentName (@decl.ProbePluginId)
+                                        </MudText>
+                                    }
+                                    @if (detail.LatestTimestamp.HasValue)
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                                            Latest: @detail.LatestTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss") (@FormatRelativeTime(detail.LatestTimestamp.Value))
+                                        </MudText>
+                                    }
+                                }
+                                else if (_metricSeriesLoading.Contains(key))
+                                {
+                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No data points found.</MudText>
+                                }
+                            </ChildContent>
+                        </MudExpansionPanel>
+                    }
+                </MudExpansionPanels>
+            }
+        </MudExpansionPanel>
+
         <MudExpansionPanel Text="@($"Probe Assignments ({_effectiveProbes.Length})")" Expanded="true">
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                        OnClick="OpenAddProbeDialog" Class="mb-3" Size="Size.Small">
@@ -376,12 +467,17 @@ else
     private Dictionary<Guid, string> _groupNames = new();
     private Dictionary<string, MonitoringStatus> _checkerStatusLookup = new();
     private Dictionary<string, DateTimeOffset> _lastProbeRun = new();
+    private Dictionary<Guid, string> _probeAssignmentNames = new();
 
     private bool _probeResultsLoading;
     private ProbeResultResponse[] _probeResults = [];
     private int _pageSize = 25;
     private DateRange _probeResultDateRange = new(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
     private string[] _metricKeys = [];
+    private HostDeclaredMetric[] _declaredMetrics = [];
+    private readonly Dictionary<string, MetricSeriesResponse?> _metricSeries = new();
+    private readonly HashSet<string> _metricSeriesLoading = new();
+    private readonly Dictionary<string, IReadOnlyDictionary<double, string>?> _metricValueMaps = new();
     private readonly HashSet<ProbeResultResponse> _expandedResults = new();
 
     private Timer? _autoRefreshTimer;
@@ -421,9 +517,21 @@ else
                 var groupsTask = Api.GetHostGroupsAsync();
                 var latestProbeTask = Api.GetLatestProbeResultsPerProbeAsync(Id);
                 var metricKeysTask = Api.GetMetricKeysAsync(Id);
+                var directProbesTask = Api.GetProbeAssignmentsAsync(Id);
+                var declaredMetricsTask = Api.GetDeclaredMetricsAsync(Id);
 
-                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask); }
+                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask, directProbesTask, declaredMetricsTask); }
                 catch (Exception ex) { Console.WriteLine($"[MONE] Task.WhenAll partial failure: {ex.GetType().Name}: {ex.Message}"); }
+
+                if (directProbesTask.IsCompletedSuccessfully)
+                    _probeAssignmentNames = directProbesTask.Result.ToDictionary(p => p.Id, p => p.Name);
+
+                if (declaredMetricsTask.IsCompletedSuccessfully)
+                {
+                    _declaredMetrics = declaredMetricsTask.Result;
+                    foreach (var m in _declaredMetrics)
+                        _metricValueMaps[m.FullKey] = ParseValueMapping(m.ValueMappingJson);
+                }
 
                 if (effectiveTask.IsCompletedSuccessfully)
                 {
@@ -456,8 +564,16 @@ else
                 if (latestProbeTask.IsCompletedSuccessfully)
                     _lastProbeRun = latestProbeTask.Result.ToDictionary(r => r.ProbeId, r => r.Timestamp);
 
-                if (metricKeysTask.IsCompletedSuccessfully)
+                if (declaredMetricsTask.IsCompletedSuccessfully && _declaredMetrics.Length > 0)
+                {
+                    _metricKeys = _declaredMetrics.Select(m => m.FullKey).ToArray();
+                    _ = LoadAllMetricSeriesAsync();
+                }
+                else if (metricKeysTask.IsCompletedSuccessfully)
+                {
                     _metricKeys = metricKeysTask.Result;
+                    _ = LoadAllMetricSeriesAsync();
+                }
 
                 await LoadProbeResultsAsync();
             }
@@ -470,6 +586,52 @@ else
 
     private string ResolveGroupName(Guid? groupId) =>
         groupId.HasValue && _groupNames.TryGetValue(groupId.Value, out var name) ? name : "Unknown Group";
+
+    private string? ResolveProbeAssignmentName(Guid assignmentId) =>
+        _probeAssignmentNames.TryGetValue(assignmentId, out var n) ? n : null;
+
+    private HostDeclaredMetric? ResolveDeclaration(string fullKey) =>
+        _declaredMetrics.FirstOrDefault(m => m.FullKey == fullKey);
+
+    private static IReadOnlyDictionary<double, string>? ParseValueMapping(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return null;
+            var dict = new Dictionary<double, string>();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (double.TryParse(prop.Name, System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture, out var k)
+                    && prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    dict[k] = prop.Value.GetString() ?? string.Empty;
+                }
+            }
+            return dict.Count == 0 ? null : dict;
+        }
+        catch { return null; }
+    }
+
+    private static string FormatLatest(double value, string? unit, IReadOnlyDictionary<double, string>? mapping)
+    {
+        if (mapping is not null && mapping.TryGetValue(value, out var label))
+            return $"{label} ({value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)})";
+        var numeric = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        return unit is null ? numeric : $"{numeric} {unit}";
+    }
+
+    private static string FormatStat(double? value, string? unit, IReadOnlyDictionary<double, string>? mapping)
+    {
+        if (value is null) return "—";
+        if (mapping is not null && mapping.TryGetValue(value.Value, out var label))
+            return label;
+        var numeric = value.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        return unit is null ? numeric : $"{numeric} {unit}";
+    }
 
     private MonitoringStatus GetCheckerStatus(string checkerPluginId) =>
         _checkerStatusLookup.GetValueOrDefault(checkerPluginId, MonitoringStatus.Unknown);
@@ -569,6 +731,34 @@ else
                 Snackbar.Add($"Failed to update override: {ex.Message}", Severity.Error);
             }
         }
+    }
+
+    private async Task LoadAllMetricSeriesAsync()
+    {
+        if (_metricKeys.Length == 0) return;
+
+        foreach (var k in _metricKeys)
+            _metricSeriesLoading.Add(k);
+        await InvokeAsync(StateHasChanged);
+
+        var tasks = _metricKeys.Select(async key =>
+        {
+            try
+            {
+                var series = await Api.GetMetricSeriesAsync(Id, key, 60);
+                _metricSeries[key] = series;
+            }
+            catch
+            {
+                _metricSeries[key] = null;
+            }
+            finally
+            {
+                _metricSeriesLoading.Remove(key);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+        await Task.WhenAll(tasks);
     }
 
     private async Task LoadProbeResultsAsync()
@@ -683,6 +873,7 @@ else
             { x => x.Model, new ProbeAssignmentDialog.FormModel
                 {
                     ProbePluginId = probe.ProbePluginId,
+                    Name = ResolveProbeAssignmentName(probe.AssignmentId) ?? probe.ProbePluginId,
                     ScheduleCron = probe.ScheduleCron,
                     ConfigJson = probe.ConfigJson,
                     Enabled = probe.Enabled
@@ -698,7 +889,7 @@ else
             try
             {
                 await Api.UpdateProbeAssignmentAsync(Id, probe.AssignmentId,
-                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.ScheduleCron, model.ConfigJson, null, model.Enabled));
+                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, null, model.Enabled));
                 Snackbar.Add("Probe assignment updated.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
@@ -738,7 +929,7 @@ else
             try
             {
                 await Api.CreateProbeAssignmentAsync(Id, new CreateProbeAssignmentRequest(
-                    model.ProbePluginId, model.ScheduleCron, model.ConfigJson, model.Enabled));
+                    model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, null, model.Enabled));
                 Snackbar.Add("Probe assignment created.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();

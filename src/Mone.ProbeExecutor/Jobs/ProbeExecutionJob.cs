@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Mone.Contracts.Models;
 using Mone.Contracts.Plugins;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
@@ -46,7 +47,14 @@ public sealed class ProbeExecutionJob(
             return;
         }
 
-        var mergedConfig = await BuildMergedConfigAsync(probePluginId, assignmentId, context.CancellationToken);
+        var assignment = await db.ProbeAssignments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == Guid.Parse(assignmentId), context.CancellationToken);
+
+        var mergedConfig = await Mone.Infrastructure.Services.ConfigMerger.BuildMergedConfigAsync(
+            db, probePluginId, assignment?.ConfigJson, logger, context.CancellationToken);
+
+        var assignmentNameSnake = assignment?.NameSnakeCase;
 
         var pluginContext = new PluginContext(probePluginId, mergedConfig, context.CancellationToken);
         await probe.InitializeAsync(pluginContext);
@@ -61,8 +69,10 @@ public sealed class ProbeExecutionJob(
                     targetAddressOverride, probePluginId);
             }
 
-            var result = await probe.ExecuteAsync(probeAddress, context.CancellationToken);
+            var rawResult = await probe.ExecuteAsync(probeAddress, context.CancellationToken);
             sw.Stop();
+
+            var result = PrefixMetadataKeys(rawResult, assignmentNameSnake);
 
             logger.LogInformation(
                 "Probe {ProbeId} completed for target {TargetId}: {Status} in {DurationMs}ms",
@@ -124,5 +134,22 @@ public sealed class ProbeExecutionJob(
 
         return await Mone.Infrastructure.Services.ConfigMerger.BuildMergedConfigAsync(
             db, probePluginId, assignment?.ConfigJson, logger, ct);
+    }
+
+    internal static ProbeResult PrefixMetadataKeys(ProbeResult result, string? nameSnakeCase)
+    {
+        if (result.Metadata is null || result.Metadata.Count == 0)
+            return result;
+        if (string.IsNullOrEmpty(nameSnakeCase))
+            return result;
+
+        var prefix = nameSnakeCase + ".";
+        var rewritten = new Dictionary<string, object>(result.Metadata.Count, StringComparer.Ordinal);
+        foreach (var kvp in result.Metadata)
+        {
+            var key = kvp.Key.Contains('.') ? kvp.Key : prefix + kvp.Key;
+            rewritten[key] = kvp.Value;
+        }
+        return result with { Metadata = rewritten };
     }
 }

@@ -1,0 +1,56 @@
+@using Mone.Dashboard.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (Points is null || Points.Length == 0)
+{
+    <span style="@($"display:inline-block;width:{Width}px;height:{Height}px;")"></span>
+}
+else
+{
+    <canvas id="@_canvasId" width="@Width" height="@Height"
+            style="@($"display:inline-block;vertical-align:middle;width:{Width}px;height:{Height}px;")"></canvas>
+}
+
+@code {
+    [Parameter] public MetricSeriesPoint[]? Points { get; set; }
+    [Parameter] public int Width { get; set; } = 160;
+    [Parameter] public int Height { get; set; } = 32;
+    [Parameter] public string? Unit { get; set; }
+    [Parameter] public string? DisplayName { get; set; }
+    [Parameter] public IReadOnlyDictionary<double, string>? ValueMapping { get; set; }
+    [Parameter] public bool IsDetail { get; set; }
+
+    private readonly string _canvasId = $"spark-{Guid.NewGuid():N}";
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        if (Points is null || Points.Length == 0) return;
+
+        var opts = new
+        {
+            unit = Unit,
+            displayName = DisplayName,
+            valueMapping = ValueMapping?.ToDictionary(kv => kv.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), kv => kv.Value)
+        };
+
+        try
+        {
+            var fn = IsDetail ? "Mone.createTimeSeries" : "Mone.createSparkline";
+            await JS.InvokeVoidAsync(fn, _canvasId, Points, opts);
+        }
+        catch (JSDisconnectedException) { /* prerender / circuit gone */ }
+        catch (TaskCanceledException) { /* navigated away */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        try { await JS.InvokeVoidAsync("Mone.destroyChart", _canvasId); }
+        catch { /* JS gone or canvas already unmounted */ }
+    }
+}

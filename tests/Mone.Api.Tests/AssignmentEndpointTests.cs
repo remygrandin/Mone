@@ -31,7 +31,7 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
@@ -48,7 +48,7 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
 
         var response = await client.GetAsync($"/api/hosts/{hostId}/probes");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -82,7 +82,7 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         var createResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
         var assignment = await createResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>();
 
         var deleteResp = await client.DeleteAsync($"/api/hosts/{hostId}/probes/{assignment!.Id}");

@@ -49,6 +49,8 @@ public class ProbeExecutionJobTests : IDisposable
             Id = assignmentId,
             HostId = hostId,
             ProbePluginId = pluginId,
+            Name = $"probe-{assignmentId:N}",
+            NameSnakeCase = $"probe_{assignmentId:N}",
             ScheduleCron = "0/30 * * * * ?",
             ConfigJson = JsonSerializer.Serialize(new Dictionary<string, string>
             {
@@ -79,6 +81,8 @@ public class ProbeExecutionJobTests : IDisposable
             Id = assignmentId,
             HostId = hostId,
             ProbePluginId = pluginId,
+            Name = $"probe-{assignmentId:N}",
+            NameSnakeCase = $"probe_{assignmentId:N}",
             ScheduleCron = "0/30 * * * * ?",
             ConfigJson = JsonSerializer.Serialize(new Dictionary<string, string>
             {
@@ -106,6 +110,8 @@ public class ProbeExecutionJobTests : IDisposable
             Id = assignmentId,
             HostId = hostId,
             ProbePluginId = pluginId,
+            Name = $"probe-{assignmentId:N}",
+            NameSnakeCase = $"probe_{assignmentId:N}",
             ScheduleCron = "0/30 * * * * ?",
             ConfigJson = null
         });

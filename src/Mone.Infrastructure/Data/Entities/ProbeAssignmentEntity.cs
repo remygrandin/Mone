@@ -16,4 +16,9 @@ public sealed class ProbeAssignmentEntity
     [MaxLength(512)]
     public string? TargetAddressOverride { get; set; }
     public bool Enabled { get; set; } = true;
+    [MaxLength(128)]
+    public required string Name { get; set; }
+    [MaxLength(128)]
+    public required string NameSnakeCase { get; set; }
+    public ICollection<ProbeAssignmentMetricEntity> Metrics { get; set; } = new List<ProbeAssignmentMetricEntity>();
 }

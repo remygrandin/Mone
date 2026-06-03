@@ -23,6 +23,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
     public DbSet<GroupMembershipEntity> HostGroupMemberships => Set<GroupMembershipEntity>();
     public DbSet<ProbeAssignmentOverrideEntity> ProbeAssignmentOverrides => Set<ProbeAssignmentOverrideEntity>();
     public DbSet<CheckerAssignmentOverrideEntity> CheckerAssignmentOverrides => Set<CheckerAssignmentOverrideEntity>();
+    public DbSet<ProbeAssignmentMetricEntity> ProbeAssignmentMetrics => Set<ProbeAssignmentMetricEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,9 +61,32 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.Property(x => x.ProbePluginId).IsRequired().HasMaxLength(256);
             e.Property(x => x.ScheduleCron).IsRequired().HasMaxLength(64);
             e.Property(x => x.TargetAddressOverride).HasMaxLength(512);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(128);
+            e.Property(x => x.NameSnakeCase).IsRequired().HasMaxLength(128);
             e.HasOne(x => x.Host).WithMany(h => h.ProbeAssignments).HasForeignKey(x => x.HostId);
             e.HasOne(x => x.Group).WithMany(g => g.ProbeAssignments).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.HostId, x.NameSnakeCase })
+                .IsUnique()
+                .HasFilter("\"HostId\" IS NOT NULL");
+            e.HasIndex(x => new { x.GroupId, x.NameSnakeCase })
+                .IsUnique()
+                .HasFilter("\"GroupId\" IS NOT NULL");
             e.ToTable(t => t.HasCheckConstraint("CK_probe_assignments_host_or_group", "(\"HostId\" IS NOT NULL AND \"GroupId\" IS NULL) OR (\"HostId\" IS NULL AND \"GroupId\" IS NOT NULL)"));
+        });
+
+        modelBuilder.Entity<ProbeAssignmentMetricEntity>(e =>
+        {
+            e.ToTable("probe_assignment_metrics");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.RawKey).IsRequired().HasMaxLength(256);
+            e.Property(x => x.FullKey).IsRequired().HasMaxLength(384);
+            e.Property(x => x.DisplayName).IsRequired().HasMaxLength(256);
+            e.Property(x => x.Unit).HasMaxLength(64);
+            e.HasOne(x => x.ProbeAssignment)
+                .WithMany(p => p.Metrics)
+                .HasForeignKey(x => x.ProbeAssignmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ProbeAssignmentId, x.FullKey }).IsUnique();
         });
 
         modelBuilder.Entity<CheckerAssignmentEntity>(e =>
@@ -82,6 +106,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.Property(x => x.ProbeId).IsRequired().HasMaxLength(256);
             e.Property(x => x.Summary).IsRequired().HasMaxLength(2048);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.MetadataJson).HasColumnType("jsonb");
         });
 
         modelBuilder.Entity<StatusHistoryEntity>(e =>

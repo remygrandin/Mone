@@ -64,7 +64,7 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *", ConfigJson: """{"timeout":30,"retries":3}"""));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30,"retries":3}"""));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
         var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
 
@@ -90,7 +90,7 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
         var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
 
@@ -113,7 +113,7 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *", ConfigJson: """{"timeout":30}"""));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30}"""));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
         var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
 
@@ -137,7 +137,7 @@ public class AssignmentOverrideEndpointTests
         using var _ = client;
 
         var assignResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
         var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
 
@@ -184,19 +184,19 @@ public class AssignmentOverrideEndpointTests
 
         // Probe 1: will be config-overridden
         var probe1Resp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", "*/5 * * * *", ConfigJson: """{"timeout":30}"""));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30}"""));
         Assert.Equal(HttpStatusCode.Created, probe1Resp.StatusCode);
         var probe1 = await probe1Resp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
 
         // Probe 2: will be disabled
         var probe2Resp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("http", "*/10 * * * *"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"));
         Assert.Equal(HttpStatusCode.Created, probe2Resp.StatusCode);
         var probe2 = await probe2Resp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
 
         // Probe 3: untouched — no override
         var probe3Resp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("dns", "*/15 * * * *"));
+            new CreateProbeAssignmentRequest("dns", $"dns-{Guid.NewGuid():N}", "*/15 * * * *"));
         Assert.Equal(HttpStatusCode.Created, probe3Resp.StatusCode);
 
         // Override probe 1 config

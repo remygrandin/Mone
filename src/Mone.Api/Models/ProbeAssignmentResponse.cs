@@ -5,6 +5,8 @@ public sealed record ProbeAssignmentResponse(
     Guid? HostId,
     Guid? GroupId,
     string ProbePluginId,
+    string Name,
+    string NameSnakeCase,
     string ScheduleCron,
     string? ConfigJson,
     string? TargetAddressOverride,
