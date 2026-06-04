@@ -5,6 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Stable plugin ABI: pin AssemblyVersion so a plugin build passing
+         -p:Version=X.Y.Z (which flows into this ProjectReference) cannot stamp
+         the contracts assembly with the plugin's version. Plugins record a hard
+         reference to this version; if it floats above the host's copy, the host
+         can no longer resolve it and every such plugin fails to load. -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
   </PropertyGroup>
 
 </Project>

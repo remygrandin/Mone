@@ -61,7 +61,11 @@ public sealed class PluginEngine : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var fullPath = Path.GetFullPath(assemblyPath);
-        _logger.LogInformation("Loading plugin assembly: {Path}", fullPath);
+
+        var alreadyLoaded = _loaders.ContainsKey(fullPath);
+        _logger.LogInformation(
+            alreadyLoaded ? "Reloading plugin assembly in place: {Path}" : "Loading plugin assembly: {Path}",
+            fullPath);
 
         var loader = PluginLoader.Create(fullPath, _enableHotReload);
 
@@ -70,25 +74,14 @@ public sealed class PluginEngine : IDisposable
             loader.Reloaded += OnPluginReloaded;
         }
 
+        IReadOnlyList<(IPlugin Plugin, PluginMetadata Metadata)> plugins;
         try
         {
-            var plugins = loader.LoadPlugins();
-            if (plugins.Count == 0)
-            {
-                _logger.LogWarning("No plugin types found in assembly: {Path}", fullPath);
-                loader.Dispose();
-                return;
-            }
-
-            _loaders[fullPath] = loader;
-
-            foreach (var (plugin, metadata) in plugins)
-            {
-                _registry.TryRegister(metadata.PluginId, new PluginRegistration(plugin, metadata));
-                _logger.LogInformation("Loaded plugin {PluginId} ({Kind}) from {Path}",
-                    metadata.PluginId, metadata.Kind, fullPath);
-                PluginLoaded?.Invoke(this, new PluginEventArgs(metadata));
-            }
+            // Load and validate the NEW assembly before touching the existing one.
+            // A reload that fails here must leave the previously-loaded plugin
+            // untouched — otherwise a failed "update" silently uninstalls a
+            // working plugin. Only after this succeeds do we unload the old load.
+            plugins = loader.LoadPlugins();
         }
         catch (Exception ex)
         {
@@ -96,6 +89,33 @@ public sealed class PluginEngine : IDisposable
             _logger.LogError(ex, "Failed to load plugins from assembly: {Path}", fullPath);
             PluginLoadFailed?.Invoke(this, new PluginLoadFailedEventArgs(fullPath, ex));
             throw;
+        }
+
+        if (plugins.Count == 0)
+        {
+            _logger.LogWarning("No plugin types found in assembly: {Path}", fullPath);
+            loader.Dispose();
+            return;
+        }
+
+        // New assembly is valid. Now swap out the prior load (if any) so the
+        // registry replaces the stale registration cleanly and the old loader
+        // is disposed rather than leaked. PluginId is Name@Version (identical
+        // across CI builds sharing a base version), so without this the
+        // TryAdd-based registry would keep the old registration.
+        if (alreadyLoaded)
+        {
+            UnloadPlugin(fullPath);
+        }
+
+        _loaders[fullPath] = loader;
+
+        foreach (var (plugin, metadata) in plugins)
+        {
+            _registry.TryRegister(metadata.PluginId, new PluginRegistration(plugin, metadata));
+            _logger.LogInformation("Loaded plugin {PluginId} ({Kind}) from {Path}",
+                metadata.PluginId, metadata.Kind, fullPath);
+            PluginLoaded?.Invoke(this, new PluginEventArgs(metadata));
         }
     }
 

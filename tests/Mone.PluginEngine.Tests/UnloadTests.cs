@@ -61,6 +61,26 @@ public class UnloadTests : IDisposable
         Assert.False(weakRef.IsAlive, "Plugin instance should be collected after unload + GC");
     }
 
+    [Fact]
+    public void ReloadSamePath_ReplacesRegistrationInsteadOfKeepingStale()
+    {
+        var dllPath = TestPluginBuilder.BuildPlugin("TestProbePlugin");
+
+        _engine.LoadPluginAssembly(dllPath);
+        var first = _engine.GetPlugins<IProbePlugin>().Single();
+
+        // An in-place update overwrites the same DLL path. The PluginId is
+        // Name@Version (base version), identical across CI builds sharing a base
+        // version, so a naive TryAdd would silently keep the stale registration
+        // and leak the prior loader. Reloading the same path must replace it.
+        _engine.LoadPluginAssembly(dllPath);
+        var second = _engine.GetPlugins<IProbePlugin>().Single();
+
+        Assert.Equal(1, _engine.Registry.Count);
+        Assert.Single(_engine.LoadedAssemblyPaths);
+        Assert.NotSame(first, second);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private WeakReference LoadAndUnload(string dllPath)
     {
