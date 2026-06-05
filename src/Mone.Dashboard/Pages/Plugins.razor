@@ -117,7 +117,7 @@
                                         </MudText>
                                     }
                                 </MudCardContent>
-                                <MudCardActions>
+                                <MudCardActions Style="gap:8px;">
                                     @if (p.Status == PluginStatus.Installed && p.Versions.Count == 0)
                                     {
                                         @* Installed but no remote catalog (orphaned install) — uninstall only *@
@@ -169,22 +169,14 @@
         <MudPaper Class="pa-4 mb-4">
             <MudText Typo="Typo.subtitle1" Class="mb-2">Add a repository</MudText>
             <MudGrid Spacing="2">
-                <MudItem xs="12" md="3">
-                    <MudTextField @bind-Value="_newOwner" Label="Owner" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudItem xs="12" md="10">
+                    <MudTextField @bind-Value="_newUrl" Label="Repository URL" Required="true"
+                                  Placeholder="https://github.com/owner/repo" Variant="Variant.Outlined" Margin="Margin.Dense" />
                 </MudItem>
-                <MudItem xs="12" md="3">
-                    <MudTextField @bind-Value="_newRepo" Label="Repository" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                </MudItem>
-                <MudItem xs="12" md="2">
-                    <MudTextField @bind-Value="_newBranch" Label="Branch" Placeholder="main" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                </MudItem>
-                <MudItem xs="12" md="3">
-                    <MudTextField @bind-Value="_newDisplayName" Label="Display name (optional)" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                </MudItem>
-                <MudItem xs="12" md="1" Class="d-flex align-end">
+                <MudItem xs="12" md="2" Class="d-flex align-end">
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                                OnClick="AddRepoAsync"
-                               Disabled="_busy || string.IsNullOrWhiteSpace(_newOwner) || string.IsNullOrWhiteSpace(_newRepo)">
+                               Disabled="_busy || string.IsNullOrWhiteSpace(_newUrl)">
                         Add
                     </MudButton>
                 </MudItem>
@@ -206,9 +198,14 @@
             <MudDataGrid Items="_repos" Hover="true" Dense="true" T="PluginRepositoryResponse">
                 <Columns>
                     <PropertyColumn Property="x => x.DisplayName" Title="Name" />
-                    <PropertyColumn Property="x => x.Owner" Title="Owner" />
-                    <PropertyColumn Property="x => x.Repo" Title="Repo" />
-                    <PropertyColumn Property="x => x.Branch" Title="Branch" />
+                    <TemplateColumn Title="URL">
+                        <CellTemplate>
+                            <MudLink Href="@($"https://github.com/{context.Item.Owner}/{context.Item.Repo}")"
+                                     Target="_blank" Typo="Typo.body2">
+                                @($"github.com/{context.Item.Owner}/{context.Item.Repo}")
+                            </MudLink>
+                        </CellTemplate>
+                    </TemplateColumn>
                     <TemplateColumn Title="Last synced">
                         <CellTemplate>
                             @if (context.Item.LastSyncedAt is { } at)
@@ -250,10 +247,7 @@
     private PluginRepositoryResponse[] _repos = [];
     private readonly Dictionary<string, Guid> _selectedVersionByName = new(StringComparer.OrdinalIgnoreCase);
 
-    private string _newOwner = "";
-    private string _newRepo = "";
-    private string _newBranch = "";
-    private string _newDisplayName = "";
+    private string _newUrl = "";
 
     private enum StateFilter { All, Installed, Available, UpdateAvailable }
     private enum TypeFilter { All, Probe, Checker, Notification }
@@ -371,20 +365,60 @@
 
     private async Task AddRepoAsync()
     {
+        if (!TryParseRepoUrl(_newUrl, out var owner, out var repo, out var branch))
+        {
+            Snackbar.Add("Enter a valid GitHub URL (e.g. https://github.com/owner/repo)", Severity.Warning);
+            return;
+        }
+
         _busy = true;
         try
         {
-            await Api.AddPluginRepositoryAsync(new AddRepositoryRequest(
-                _newOwner.Trim(), _newRepo.Trim(),
-                string.IsNullOrWhiteSpace(_newBranch) ? null : _newBranch.Trim(),
-                string.IsNullOrWhiteSpace(_newDisplayName) ? null : _newDisplayName.Trim()));
-            _newOwner = _newRepo = _newBranch = _newDisplayName = "";
+            await Api.AddPluginRepositoryAsync(new AddRepositoryRequest(owner, repo, branch, null));
+            _newUrl = "";
             Snackbar.Add("Repository added — syncing in background", Severity.Success);
             await LoadReposAsync();
         }
         catch (Exception ex) { Snackbar.Add($"Add failed: {ex.Message}", Severity.Error); }
         finally { _busy = false; }
     }
+
+    private static bool TryParseRepoUrl(string? url, out string owner, out string repo, out string? branch)
+    {
+        owner = ""; repo = ""; branch = null;
+        if (string.IsNullOrWhiteSpace(url)) return false;
+
+        var s = url.Trim();
+
+        // git@github.com:owner/repo(.git)
+        if (s.StartsWith("git@", StringComparison.OrdinalIgnoreCase))
+        {
+            var colon = s.IndexOf(':');
+            if (colon < 0) return false;
+            s = s[(colon + 1)..];
+        }
+        else if (s.Contains("://"))
+        {
+            // strip scheme + host: https://github.com/owner/repo/...
+            if (!Uri.TryCreate(s, UriKind.Absolute, out var uri)) return false;
+            s = uri.AbsolutePath.TrimStart('/');
+        }
+
+        var parts = s.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 2) return false;
+
+        owner = parts[0];
+        repo = StripGit(parts[1]);
+
+        // .../tree/<branch>
+        if (parts.Length >= 4 && string.Equals(parts[2], "tree", StringComparison.OrdinalIgnoreCase))
+            branch = parts[3];
+
+        return owner.Length > 0 && repo.Length > 0;
+    }
+
+    private static string StripGit(string s) =>
+        s.EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? s[..^4] : s;
 
     private async Task SyncRepoAsync(PluginRepositoryResponse repo)
     {
