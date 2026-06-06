@@ -34,7 +34,9 @@ builder.Services.AddQuartzHostedService(options =>
 
 builder.Services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();
 builder.Services.AddTransient<ProbeExecutionJob>();
-builder.Services.AddHostedService<ProbeSchedulerService>();
+builder.Services.AddSingleton<ProbeSchedulerService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ProbeSchedulerService>());
+builder.Services.AddHostedService<ProbeScheduleListenerService>();
 builder.Services.AddHostedService<ProbeTriggerListenerService>();
 builder.Services.AddHostedService<UdpListenerService>();
 builder.Services.AddHostedService<Mone.PluginEngine.PluginReloadListener>();

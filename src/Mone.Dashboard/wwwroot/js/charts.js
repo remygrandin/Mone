@@ -47,9 +47,11 @@
 
     function pointsToDataset(points) {
         // Chart.js needs labels (x-axis categories) + numeric data array.
+        // Blazor JS interop serializes C# properties as camelCase (timestamp/value);
+        // the raw API JSON also uses camelCase. Accept PascalCase too for safety.
         return {
-            labels: points.map((p) => p.Timestamp),
-            data: points.map((p) => p.Value),
+            labels: points.map((p) => p.timestamp ?? p.Timestamp),
+            data: points.map((p) => p.value ?? p.Value),
         };
     }
 
@@ -150,7 +152,10 @@
                 }],
             },
             options: {
-                responsive: true,
+                // responsive:true with no fixed-height parent makes Chart.js grow the
+                // canvas every resize tick (infinite expansion). The canvas already has
+                // explicit width/height attributes, so honor them instead.
+                responsive: false,
                 maintainAspectRatio: false,
                 animation: false,
                 plugins: {

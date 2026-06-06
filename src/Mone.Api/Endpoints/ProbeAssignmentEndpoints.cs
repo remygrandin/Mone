@@ -3,6 +3,7 @@ using Mone.Api.Models;
 using Mone.Api.Services;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
+using NATS.Client.JetStream;
 
 namespace Mone.Api.Endpoints;
 
@@ -31,6 +32,8 @@ public static class ProbeAssignmentEndpoints
             MoneDbContext db,
             ProbeAssignmentNameValidator nameValidator,
             ProbeAssignmentMetricMaterializer materializer,
+            INatsJSContext jetStream,
+            ILogger<Program> logger,
             CancellationToken ct) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId, ct))
@@ -58,6 +61,8 @@ public static class ProbeAssignmentEndpoints
 
             await materializer.MaterializeAsync(assignment, ct);
 
+            await ProbeScheduleNotifier.NotifyChangedAsync(jetStream, "created", assignment.Id, logger, ct);
+
             var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled);
             return Results.Created($"/api/hosts/{hostId}/probes/{assignment.Id}", response);
         });
@@ -69,6 +74,8 @@ public static class ProbeAssignmentEndpoints
             MoneDbContext db,
             ProbeAssignmentNameValidator nameValidator,
             ProbeAssignmentMetricMaterializer materializer,
+            INatsJSContext jetStream,
+            ILogger<Program> logger,
             CancellationToken ct) =>
         {
             var assignment = await db.ProbeAssignments
@@ -92,19 +99,30 @@ public static class ProbeAssignmentEndpoints
 
             await materializer.MaterializeAsync(assignment, ct);
 
+            await ProbeScheduleNotifier.NotifyChangedAsync(jetStream, "updated", assignment.Id, logger, ct);
+
             var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled);
             return Results.Ok(response);
         });
 
-        group.MapDelete("/{id:guid}", async (Guid hostId, Guid id, MoneDbContext db) =>
+        group.MapDelete("/{id:guid}", async (
+            Guid hostId,
+            Guid id,
+            MoneDbContext db,
+            INatsJSContext jetStream,
+            ILogger<Program> logger,
+            CancellationToken ct) =>
         {
             var assignment = await db.ProbeAssignments
-                .FirstOrDefaultAsync(p => p.Id == id && p.HostId == hostId);
+                .FirstOrDefaultAsync(p => p.Id == id && p.HostId == hostId, ct);
 
             if (assignment is null) return Results.NotFound();
 
             db.ProbeAssignments.Remove(assignment);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
+
+            await ProbeScheduleNotifier.NotifyChangedAsync(jetStream, "deleted", id, logger, ct);
+
             return Results.NoContent();
         });
     }

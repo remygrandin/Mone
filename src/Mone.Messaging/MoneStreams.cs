@@ -20,6 +20,13 @@ public static class MoneStreams
         public const string SubjectPrefix = "probe.trigger.>";
     }
 
+    public static class ProbeSchedule
+    {
+        public const string StreamName = "PROBE_SCHEDULE";
+        public const string SubjectPrefix = "probe.schedule.>";
+        public const string ChangedSubject = "probe.schedule.changed";
+    }
+
     public static class PluginReload
     {
         public const string Subject = "mone.plugins.reload";

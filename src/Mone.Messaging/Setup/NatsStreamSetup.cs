@@ -21,6 +21,9 @@ public sealed class NatsStreamSetup(INatsConnection connection, ILogger<NatsStre
         await CreateOrUpdateStream(js, MoneStreams.ProbeTriggers.StreamName,
             [MoneStreams.ProbeTriggers.SubjectPrefix], cancellationToken);
 
+        await CreateOrUpdateStream(js, MoneStreams.ProbeSchedule.StreamName,
+            [MoneStreams.ProbeSchedule.SubjectPrefix], cancellationToken);
+
         logger.LogInformation("NATS JetStream streams initialized");
     }
 
