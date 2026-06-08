@@ -11,7 +11,7 @@ public static class ProbeResultEndpoints
     {
         var group = app.MapGroup("/api/hosts/{hostId:guid}/results").RequireAuthorization();
 
-        group.MapGet("/", async (Guid hostId, DateTimeOffset? from, DateTimeOffset? to, string? probeId, MoneDbContext db) =>
+        group.MapGet("/", async (Guid hostId, UtcQueryTime? from, UtcQueryTime? to, string? probeId, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
                 return Results.NotFound();
@@ -19,8 +19,8 @@ public static class ProbeResultEndpoints
             IQueryable<Infrastructure.Data.Entities.ProbeResultEntity> query = db.ProbeResults
                 .Where(r => r.TargetId == hostId);
 
-            if (from.HasValue) query = query.Where(r => r.Timestamp >= from.Value);
-            if (to.HasValue) query = query.Where(r => r.Timestamp <= to.Value);
+            if (from.HasValue) query = query.Where(r => r.Timestamp >= from.Value.Utc);
+            if (to.HasValue) query = query.Where(r => r.Timestamp <= to.Value.Utc);
             if (!string.IsNullOrWhiteSpace(probeId)) query = query.Where(r => r.ProbeId == probeId);
 
             var results = await query
@@ -93,19 +93,40 @@ public static class ProbeResultEndpoints
             return Results.Ok(dedup);
         });
 
-        group.MapGet("/metrics/series", async (Guid hostId, string key, int? points, MoneDbContext db) =>
+        group.MapGet("/metrics/series", async (Guid hostId, string key, int? points, UtcQueryTime? from, UtcQueryTime? to, MoneDbContext db) =>
         {
             if (string.IsNullOrWhiteSpace(key))
                 return Results.BadRequest("key required");
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
                 return Results.NotFound();
 
-            var maxPoints = Math.Clamp(points ?? 60, 1, 500);
+            var hasRange = from.HasValue || to.HasValue;
+            // A bounded window can legitimately contain many more points than the dashboard's
+            // rolling view, so lift the cap when a date range is supplied.
+            var maxPoints = hasRange
+                ? Math.Clamp(points ?? 5000, 1, 5000)
+                : Math.Clamp(points ?? 60, 1, 500);
 
             // Server-side extraction using JSONB path. Picks the most recent N rows that contain
             // a numeric-coercible value at the given key, regardless of how sparse the metric is.
-            var rows = await db.Database.SqlQueryRaw<JsonbMetricRow>(
-                """
+            var sqlParams = new List<object> { key, hostId };
+            var rangeClause = "";
+            if (from.HasValue)
+            {
+                rangeClause += " AND \"Timestamp\" >= {" + sqlParams.Count + "}";
+                sqlParams.Add(from.Value.Utc);
+            }
+            if (to.HasValue)
+            {
+                rangeClause += " AND \"Timestamp\" <= {" + sqlParams.Count + "}";
+                sqlParams.Add(to.Value.Utc);
+            }
+            var limitToken = "{" + sqlParams.Count + "}";
+            sqlParams.Add(maxPoints);
+
+            // Single braces are literal in a $$ raw string; {{ }} mark interpolation holes.
+            var sql =
+                $$"""
                 SELECT "Timestamp" AS "Timestamp",
                        CASE
                            WHEN jsonb_typeof("MetadataJson" -> {0}) = 'number'
@@ -120,11 +141,12 @@ public static class ProbeResultEndpoints
                 FROM probe_results
                 WHERE "TargetId" = {1}
                   AND "MetadataJson" IS NOT NULL
-                  AND "MetadataJson" ? {0}
+                  AND "MetadataJson" ? {0}{{rangeClause}}
                 ORDER BY "Timestamp" DESC
-                LIMIT {2}
-                """,
-                key, hostId, maxPoints).ToListAsync();
+                LIMIT {{limitToken}}
+                """;
+
+            var rows = await db.Database.SqlQueryRaw<JsonbMetricRow>(sql, sqlParams.ToArray()).ToListAsync();
 
             var pointsList = rows
                 .Where(r => r.Value.HasValue)

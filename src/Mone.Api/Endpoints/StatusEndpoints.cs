@@ -35,7 +35,7 @@ public static class StatusEndpoints
             return Results.Ok(latest);
         });
 
-        group.MapGet("/history", async (Guid hostId, DateTimeOffset? from, DateTimeOffset? to, MoneDbContext db) =>
+        group.MapGet("/history", async (Guid hostId, UtcQueryTime? from, UtcQueryTime? to, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
                 return Results.NotFound();
@@ -43,8 +43,8 @@ public static class StatusEndpoints
             IQueryable<Infrastructure.Data.Entities.StatusHistoryEntity> query = db.StatusHistory
                 .Where(s => s.TargetId == hostId);
 
-            if (from.HasValue) query = query.Where(s => s.Timestamp >= from.Value);
-            if (to.HasValue) query = query.Where(s => s.Timestamp <= to.Value);
+            if (from.HasValue) query = query.Where(s => s.Timestamp >= from.Value.Utc);
+            if (to.HasValue) query = query.Where(s => s.Timestamp <= to.Value.Utc);
 
             var history = await query
                 .OrderByDescending(s => s.Timestamp)

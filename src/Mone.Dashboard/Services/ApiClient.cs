@@ -199,9 +199,23 @@ public sealed class ApiClient
     public async Task<string[]> GetMetricKeysAsync(Guid hostId) =>
         await GetAsync<string[]>($"api/hosts/{hostId}/results/metric-keys") ?? [];
 
-    public async Task<MetricSeriesResponse?> GetMetricSeriesAsync(Guid hostId, string metricKey, int points = 60) =>
-        await GetAsync<MetricSeriesResponse>(
-            $"api/hosts/{hostId}/results/metrics/series?key={Uri.EscapeDataString(metricKey)}&points={points}");
+    public async Task<MetricSeriesResponse?> GetMetricSeriesAsync(Guid hostId, string metricKey, int points = 60, DateTimeOffset? from = null, DateTimeOffset? to = null)
+    {
+        var url = $"api/hosts/{hostId}/results/metrics/series?key={Uri.EscapeDataString(metricKey)}";
+        if (from.HasValue || to.HasValue)
+        {
+            if (from.HasValue)
+                url += $"&from={Uri.EscapeDataString(from.Value.ToString("O"))}";
+            if (to.HasValue)
+                url += $"&to={Uri.EscapeDataString(to.Value.ToString("O"))}";
+        }
+        else
+        {
+            url += $"&points={points}";
+        }
+
+        return await GetAsync<MetricSeriesResponse>(url);
+    }
 
     public async Task<HostDeclaredMetric[]> GetDeclaredMetricsAsync(Guid hostId) =>
         await GetAsync<HostDeclaredMetric[]>($"api/hosts/{hostId}/results/declared-metrics") ?? [];

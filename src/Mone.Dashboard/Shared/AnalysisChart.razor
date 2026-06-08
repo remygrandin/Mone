@@ -1,0 +1,102 @@
+@using Mone.Dashboard.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@if (Series is null || Series.Count == 0)
+{
+    <div style="@($"display:flex;align-items:center;justify-content:center;width:100%;height:{Height}px;color:var(--mud-palette-text-secondary);")">
+        Select one or more metrics to plot.
+    </div>
+}
+else
+{
+    <div style="@($"position:relative;width:100%;height:{Height}px;")">
+        <canvas id="@_canvasId"></canvas>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<AnalysisSeries>? Series { get; set; }
+    [Parameter] public IReadOnlyList<AnalysisEvent>? Events { get; set; }
+    [Parameter] public int Width { get; set; } = 640;
+    [Parameter] public int Height { get; set; } = 360;
+
+    private readonly string _canvasId = $"multi-{Guid.NewGuid():N}";
+    private bool _disposed;
+    private string? _lastSignature;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        if (Series is null || Series.Count == 0) return;
+
+        // Only re-create the chart when the selected metrics, their data, or the events change.
+        var signature = BuildSignature();
+        if (signature == _lastSignature) return;
+        _lastSignature = signature;
+
+        var series = Series.Select(s => new
+        {
+            key = s.Key,
+            displayName = s.DisplayName,
+            unit = s.Unit,
+            color = s.Color,
+            points = s.Points,
+        }).ToArray();
+
+        var opts = new
+        {
+            fullWidth = true,
+            events = (Events ?? Array.Empty<AnalysisEvent>()).Select(e => new
+            {
+                timestamp = e.Timestamp,
+                label = e.Label,
+                color = e.Color,
+            }).ToArray(),
+        };
+
+        try
+        {
+            await JS.InvokeVoidAsync("Mone.createMultiSeries", _canvasId, series, opts);
+        }
+        catch (JSDisconnectedException) { /* prerender / circuit gone */ }
+        catch (TaskCanceledException) { /* navigated away */ }
+    }
+
+    private string BuildSignature()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var s in Series!)
+        {
+            sb.Append(s.Key).Append(':').Append(s.Points?.Length ?? 0);
+            if (s.Points is { Length: > 0 })
+                sb.Append('@').Append(s.Points[^1].Timestamp.ToUnixTimeMilliseconds());
+            sb.Append('|');
+        }
+        sb.Append("##");
+        foreach (var e in Events ?? Array.Empty<AnalysisEvent>())
+            sb.Append(e.Timestamp.ToUnixTimeMilliseconds()).Append(',');
+        return sb.ToString();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        try { await JS.InvokeVoidAsync("Mone.destroyChart", _canvasId); }
+        catch { /* JS gone or canvas already unmounted */ }
+    }
+
+    public sealed record AnalysisSeries(
+        string Key,
+        string DisplayName,
+        string? Unit,
+        string? Color,
+        MetricSeriesPoint[] Points);
+
+    public sealed record AnalysisEvent(
+        DateTimeOffset Timestamp,
+        string Label,
+        string? Color);
+}

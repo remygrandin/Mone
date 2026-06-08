@@ -46,7 +46,7 @@ else
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudText Typo="Typo.body2" Class="mud-text-secondary">Created</MudText>
-                    <MudText Typo="Typo.body1">@_host.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</MudText>
+                    <MudText Typo="Typo.body1">@_host.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudText>
                 </MudItem>
             </MudGrid>
             @if (_host.Tags.Length > 0)
@@ -65,114 +65,351 @@ else
                        OnClick="@(() => Nav.NavigateTo($"/hosts/{Id}/status"))">
                 View Status History
             </MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
-                       OnClick="OpenEditDialog" Class="ml-2">
-                Edit
-            </MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
-                       OnClick="OpenDeleteDialog" Class="ml-2">
-                Delete
-            </MudButton>
         </MudCardActions>
     </MudCard>
 
-    <MudExpansionPanels MultiExpansion="true">
-        <MudExpansionPanel Text="@($"Metrics ({_metricKeys.Length})")" Expanded="true">
-            @if (_metricKeys.Length == 0)
-            {
-                <MudAlert Severity="Severity.Info">No numeric metrics recorded for this host yet.</MudAlert>
-            }
-            else
-            {
-                <MudExpansionPanels MultiExpansion="true" Dense="true" Elevation="0">
-                    @foreach (var key in _metricKeys)
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4" @bind-ActivePanelIndex="ActiveTab">
+
+        @* ───────────────────────── Dashboard ───────────────────────── *@
+        <MudTabPanel Text="Dashboard" Icon="@Icons.Material.Filled.Dashboard">
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6" Class="mb-2">Metrics</MudText>
+                    @if (_metricKeys.Length == 0)
                     {
-                        var decl = ResolveDeclaration(key);
-                        var displayName = decl?.DisplayName ?? key;
-                        var unit = decl?.Unit;
-                        var mapping = _metricValueMaps.TryGetValue(key, out var mv) ? mv : null;
-                        <MudExpansionPanel @key="@key">
-                            <TitleContent>
-                                <div style="display:flex;align-items:center;gap:16px;width:100%;">
-                                    <div style="flex:1;display:flex;flex-direction:column;">
+                        <MudAlert Severity="Severity.Info">No numeric metrics recorded for this host yet.</MudAlert>
+                    }
+                    else
+                    {
+                        @foreach (var key in _metricKeys)
+                        {
+                            var decl = ResolveDeclaration(key);
+                            var displayName = decl?.DisplayName ?? key;
+                            var unit = decl?.Unit;
+                            var mapping = _metricValueMaps.TryGetValue(key, out var mv) ? mv : null;
+                            <div @key="@key" style="position:relative;overflow:hidden;min-height:56px;padding:8px 12px;margin-bottom:6px;border:1px solid var(--mud-palette-lines-default);border-radius:4px;">
+                                @if (_metricSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
+                                {
+                                    <div style="position:absolute;inset:0;opacity:0.5;pointer-events:none;z-index:0;">
+                                        <Sparkline Points="@s.Points" FullWidth="true" Height="56" Background="true"
+                                                   Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" />
+                                    </div>
+                                }
+                                <div style="position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                                    <div style="min-width:0;">
                                         <MudText Typo="Typo.body1" Style="font-weight:500;">@displayName@(unit is null ? "" : $" ({unit})")</MudText>
                                         <MudText Typo="Typo.caption" Color="Color.Secondary">@key</MudText>
                                     </div>
-                                    <span style="flex:0 0 160px;text-align:center;">
-                                        @if (_metricSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
+                                    <div style="text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0;">
+                                        @if (_metricSeries.TryGetValue(key, out var s2) && s2?.Latest is { } latest)
                                         {
-                                            <Sparkline Points="@s.Points" Width="160" Height="32"
-                                                       Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" />
+                                            <MudText Typo="Typo.body2" Color="Color.Primary">@FormatLatest(latest, unit, mapping)</MudText>
                                         }
                                         else if (_metricSeriesLoading.Contains(key))
                                         {
-                                            <MudProgressLinear Indeterminate="true" Size="Size.Small" Class="my-2" />
-                                        }
-                                        else
-                                        {
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">no data</MudText>
-                                        }
-                                    </span>
-                                    <MudText Typo="Typo.body2" Color="Color.Primary" Style="flex:0 0 140px;text-align:right;font-variant-numeric:tabular-nums;">
-                                        @if (_metricSeries.TryGetValue(key, out var s2) && s2?.Latest is { } latest)
-                                        {
-                                            @FormatLatest(latest, unit, mapping)
+                                            <MudProgressCircular Indeterminate="true" Size="Size.Small" />
                                         }
                                         else
                                         {
                                             <span class="mud-text-secondary">—</span>
                                         }
-                                    </MudText>
+                                    </div>
                                 </div>
-                            </TitleContent>
-                            <ChildContent>
-                                @if (_metricSeries.TryGetValue(key, out var detail) && detail is not null && detail.Points.Length > 0)
-                                {
-                                    <MudGrid Spacing="2" Class="mb-2">
-                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Min</MudText>
-                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@FormatStat(detail.Min, unit, mapping)</MudText></MudItem>
-                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Max</MudText>
-                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@FormatStat(detail.Max, unit, mapping)</MudText></MudItem>
-                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Avg</MudText>
-                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@FormatStat(detail.Avg, unit, mapping)</MudText></MudItem>
-                                        <MudItem xs="3"><MudText Typo="Typo.caption" Class="mud-text-secondary">Points</MudText>
-                                            <MudText Typo="Typo.body2" Style="font-variant-numeric:tabular-nums;">@detail.Count</MudText></MudItem>
-                                    </MudGrid>
-                                    <Sparkline Points="@detail.Points" Width="640" Height="180"
-                                               Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" IsDetail="true" />
-                                    @if (decl is not null)
-                                    {
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block">
-                                            Produced by: @decl.ProbeAssignmentName (@decl.ProbePluginId)
-                                        </MudText>
-                                    }
-                                    @if (detail.LatestTimestamp.HasValue)
-                                    {
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
-                                            Latest: @detail.LatestTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss") (@FormatRelativeTime(detail.LatestTimestamp.Value))
-                                        </MudText>
-                                    }
-                                }
-                                else if (_metricSeriesLoading.Contains(key))
-                                {
-                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-                                }
-                                else
-                                {
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No data points found.</MudText>
-                                }
-                            </ChildContent>
-                        </MudExpansionPanel>
+                            </div>
+                        }
                     }
-                </MudExpansionPanels>
-            }
-        </MudExpansionPanel>
+                </MudItem>
 
-        <MudExpansionPanel Text="@($"Probe Assignments ({_effectiveProbes.Length})")" Expanded="true">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="OpenAddProbeDialog" Class="mb-3" Size="Size.Small">
-                Add Probe
-            </MudButton>
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.h6" Class="mb-2">Checker Results</MudText>
+                    @if (_effectiveCheckers.Length == 0)
+                    {
+                        <MudAlert Severity="Severity.Info">No checkers assigned to this host.</MudAlert>
+                    }
+                    else
+                    {
+                        <MudSimpleTable Hover="true" Dense="true" Elevation="0">
+                            <thead>
+                                <tr>
+                                    <th>Checker</th>
+                                    <th>Latest Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var checker in _effectiveCheckers)
+                                {
+                                    <tr>
+                                        <td>@checker.CheckerPluginId</td>
+                                        <td>
+                                            <MudChip T="string" Color="StatusColorHelper.ToMudColor(GetCheckerStatus(checker.CheckerPluginId))" Size="Size.Small">
+                                                @StatusColorHelper.ToLabel(GetCheckerStatus(checker.CheckerPluginId))
+                                            </MudChip>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        @* ───────────────────────── Analysis ───────────────────────── *@
+        <MudTabPanel Text="Analysis" Icon="@Icons.Material.Filled.QueryStats">
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <div class="d-flex flex-wrap align-center gap-2 mb-1">
+                    <MudTextField T="DateTime?" Label="From" @bind-Value="_analysisStart"
+                                  InputType="InputType.DateTimeLocal" Format="yyyy-MM-ddTHH:mm"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:240px;" />
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" Class="mx-1" />
+                    <MudTextField T="DateTime?" Label="To" @bind-Value="_analysisEnd"
+                                  InputType="InputType.DateTimeLocal" Format="yyyy-MM-ddTHH:mm"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:240px;" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                               OnClick="LoadAnalysisAsync" Disabled="_analysisLoading">Apply</MudButton>
+                    @if (_analysisLoading)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                        <MudText Typo="Typo.caption" Color="Color.Primary" Class="ml-1">Loading…</MudText>
+                    }
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3 d-block">
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Class="mr-1" Style="vertical-align:text-bottom;" />
+                    Times are entered and shown in your local timezone (@LocalTzOffset()).
+                </MudText>
+                <div class="d-flex flex-wrap gap-2">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                               OnClick="@(() => ApplyQuickRange(TimeSpan.FromMinutes(30)))">Last 30 min</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                               OnClick="@(() => ApplyQuickRange(TimeSpan.FromHours(1)))">Last hour</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                               OnClick="@(() => ApplyQuickRange(TimeSpan.FromHours(6)))">Last 6h</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                               OnClick="@(() => ApplyQuickRange(TimeSpan.FromHours(24)))">Last 24h</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                               OnClick="@(() => ApplyQuickRange(TimeSpan.FromDays(7)))">Last week</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default"
+                               OnClick="@(() => ApplyQuickRange(TimeSpan.FromDays(30)))">Last month</MudButton>
+                </div>
+            </MudPaper>
+
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Metrics (click to plot)</MudText>
+                    @if (_metricKeys.Length == 0)
+                    {
+                        <MudAlert Severity="Severity.Info">No metrics to plot.</MudAlert>
+                    }
+                    else
+                    {
+                        @foreach (var key in _metricKeys)
+                        {
+                            var decl = ResolveDeclaration(key);
+                            var displayName = decl?.DisplayName ?? key;
+                            var unit = decl?.Unit;
+                            var mapping = _metricValueMaps.TryGetValue(key, out var mv) ? mv : null;
+                            var selected = _selectedMetricKeys.Contains(key);
+                            <MudPaper @key="@key" Outlined="true" Class="pa-2 mb-2"
+                                      Style="@($"cursor:pointer;{(selected ? "outline:2px solid var(--mud-palette-primary);outline-offset:-1px;" : "")}")"
+                                      @onclick="@(() => ToggleMetricSelection(key))">
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <MudIcon Icon="@(selected ? Icons.Material.Filled.CheckBox : Icons.Material.Filled.CheckBoxOutlineBlank)"
+                                             Size="Size.Small" Color="@(selected ? Color.Primary : Color.Default)" />
+                                    <div style="flex:1;min-width:0;">
+                                        <MudText Typo="Typo.body2" Style="font-weight:500;">@displayName@(unit is null ? "" : $" ({unit})")</MudText>
+                                        @if (_analysisSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
+                                        {
+                                            <Sparkline Points="@s.Points" FullWidth="true" Height="28"
+                                                       Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" />
+                                        }
+                                        else
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">no data in range</MudText>
+                                        }
+                                    </div>
+                                </div>
+                            </MudPaper>
+                        }
+                    }
+                </MudItem>
+
+                <MudItem xs="12" md="8">
+                    <AnalysisChart Series="@BuildAnalysisSeries()" Events="@BuildAnalysisEvents()" Width="760" Height="380" />
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.h6" Class="mt-6 mb-2">Checker State Changes</MudText>
+            @{
+                var stateChanges = _statusHistory
+                    .Where(s => s.PreviousStatus != s.CurrentStatus)
+                    .OrderByDescending(s => s.Timestamp)
+                    .ToArray();
+            }
+            @if (stateChanges.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No checker state changes in the selected range.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Hover="true" Dense="true" Elevation="0">
+                    <thead>
+                        <tr>
+                            <th>Checker</th>
+                            <th>State Change</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var change in stateChanges)
+                        {
+                            <tr>
+                                <td>@change.CheckerId</td>
+                                <td>
+                                    <MudChip T="string" Color="StatusColorHelper.ToMudColor(change.PreviousStatus)" Size="Size.Small">
+                                        @StatusColorHelper.ToLabel(change.PreviousStatus)
+                                    </MudChip>
+                                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                                    <MudChip T="string" Color="StatusColorHelper.ToMudColor(change.CurrentStatus)" Size="Size.Small">
+                                        @StatusColorHelper.ToLabel(change.CurrentStatus)
+                                    </MudChip>
+                                </td>
+                                <td>
+                                    <MudTooltip Text="@change.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")">
+                                        @change.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                    </MudTooltip>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            <MudText Typo="Typo.h6" Class="mt-6 mb-2">Probe Results</MudText>
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <div class="d-flex align-center gap-2">
+                    <MudTooltip Text="Refresh now">
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary"
+                                       OnClick="LoadProbeResultsAsync" Disabled="_probeResultsLoading" />
+                    </MudTooltip>
+                    <MudTooltip Text="@(AutoRefreshEnabled ? "Disable auto-refresh" : "Enable auto-refresh (10s)")">
+                        <MudToggleIconButton @bind-Toggled="AutoRefreshEnabled"
+                                             Icon="@Icons.Material.Outlined.Timer" ToggledIcon="@Icons.Material.Filled.Timer"
+                                             Color="Color.Default" ToggledColor="Color.Primary"
+                                             Size="Size.Medium" />
+                    </MudTooltip>
+                    @if (AutoRefreshEnabled)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Primary">Auto-refresh on</MudText>
+                    }
+                </div>
+            </MudPaper>
+
+            @if (_probeResultsLoading)
+            {
+                <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-4" />
+            }
+            else if (_probeResults.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No probe results found for the selected date range.</MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_probeResults" Dense="true" Hover="true" Striped="true"
+                          RowsPerPage="@_pageSize" T="ProbeResultResponse">
+                    <ToolBarContent>
+                        <MudSelect T="int" Value="@_pageSize" ValueChanged="@(v => _pageSize = v)"
+                                   Label="Page size" Style="max-width:120px;" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="10">10</MudSelectItem>
+                            <MudSelectItem Value="25">25</MudSelectItem>
+                            <MudSelectItem Value="50">50</MudSelectItem>
+                            <MudSelectItem Value="100">100</MudSelectItem>
+                        </MudSelect>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh Style="width:50px;"></MudTh>
+                        <MudTh>Timestamp</MudTh>
+                        <MudTh>Probe</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Summary</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            @if (!string.IsNullOrEmpty(context.MetadataJson))
+                            {
+                                <MudIconButton Icon="@(_expandedResults.Contains(context) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                               Size="Size.Small" OnClick="@(() => ToggleMetadata(context))" />
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Timestamp">
+                            <MudTooltip Text="@context.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")">
+                                @context.Timestamp.ToLocalTime().ToString("MM-dd HH:mm:ss")
+                            </MudTooltip>
+                        </MudTd>
+                        <MudTd DataLabel="Probe">@context.ProbeId</MudTd>
+                        <MudTd DataLabel="Status">
+                            <MudChip T="string" Color="StatusColorHelper.ToMudColor(context.Status)" Size="Size.Small">
+                                @StatusColorHelper.ToLabel(context.Status)
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Summary">@context.Summary</MudTd>
+                    </RowTemplate>
+                    <ChildRowContent>
+                        @if (_expandedResults.Contains(context))
+                        {
+                            <MudTr>
+                                <td colspan="5" class="pa-4" style="background-color: var(--mud-palette-background-gray);">
+                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Metadata</MudText>
+                                    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Style="background: transparent;">
+                                        <thead>
+                                            <tr><th>Key</th><th>Value</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var kv in ParseMetadata(context.MetadataJson))
+                                            {
+                                                <tr><td><strong>@kv.Key</strong></td><td>@kv.Value</td></tr>
+                                            }
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </td>
+                            </MudTr>
+                        }
+                    </ChildRowContent>
+                    <PagerContent>
+                        <MudTablePager />
+                    </PagerContent>
+                </MudTable>
+            }
+        </MudTabPanel>
+
+        @* ───────────────────────── Settings ───────────────────────── *@
+        <MudTabPanel Text="Settings" Icon="@Icons.Material.Filled.Settings">
+            <MudText Typo="Typo.h6" Class="mb-2">Host Settings</MudText>
+            <MudPaper Class="pa-4 mb-6" Elevation="0">
+                <div class="d-flex align-center gap-2 flex-wrap">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                               OnClick="OpenEditDialog">
+                        Edit
+                    </MudButton>
+                    <MudButton Variant="@(_host.Enabled ? Variant.Outlined : Variant.Filled)"
+                               Color="@(_host.Enabled ? Color.Warning : Color.Success)"
+                               StartIcon="@(_host.Enabled ? Icons.Material.Filled.PauseCircle : Icons.Material.Filled.PlayCircle)"
+                               OnClick="ToggleHostEnabledAsync">
+                        @(_host.Enabled ? "Disable" : "Enable")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
+                               OnClick="OpenDeleteDialog">
+                        Delete
+                    </MudButton>
+                </div>
+            </MudPaper>
+
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudText Typo="Typo.h6">Probe Assignments (@_effectiveProbes.Length)</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenAddProbeDialog" Size="Size.Small">
+                    Add Probe
+                </MudButton>
+            </div>
             @if (_effectiveProbes.Length == 0)
             {
                 <MudAlert Severity="Severity.Info">No probes assigned to this host.</MudAlert>
@@ -222,7 +459,7 @@ else
                                 <td>
                                     @if (GetLastRun(probe.ProbePluginId) is { } lastRun)
                                     {
-                                        <MudTooltip Text="@lastRun.ToString("yyyy-MM-dd HH:mm:ss")">
+                                        <MudTooltip Text="@lastRun.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
                                             <MudText Typo="Typo.body2">@FormatRelativeTime(lastRun)</MudText>
                                         </MudTooltip>
                                     }
@@ -264,13 +501,14 @@ else
                     </tbody>
                 </MudSimpleTable>
             }
-        </MudExpansionPanel>
 
-        <MudExpansionPanel Text="@($"Checker Assignments ({_effectiveCheckers.Length})")" Expanded="true">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="OpenAddCheckerDialog" Class="mb-3" Size="Size.Small">
-                Add Checker
-            </MudButton>
+            <div class="d-flex align-center justify-space-between mb-2 mt-6">
+                <MudText Typo="Typo.h6">Checker Assignments (@_effectiveCheckers.Length)</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenAddCheckerDialog" Size="Size.Small">
+                    Add Checker
+                </MudButton>
+            </div>
             @if (_effectiveCheckers.Length == 0)
             {
                 <MudAlert Severity="Severity.Info">No checkers assigned to this host.</MudAlert>
@@ -345,111 +583,8 @@ else
                     </tbody>
                 </MudSimpleTable>
             }
-        </MudExpansionPanel>
-
-        <MudExpansionPanel Text="@($"Probe Results ({_probeResults.Length})")" Expanded="true">
-            <MudPaper Class="pa-4 mb-4" Elevation="0">
-                <MudGrid>
-                    <MudItem xs="12" sm="8">
-                        <MudDateRangePicker @bind-DateRange="_probeResultDateRange" @bind-DateRange:after="LoadProbeResultsAsync"
-                                            Label="Date Range" Variant="Variant.Outlined" />
-                    </MudItem>
-                    <MudItem xs="12" sm="4" Class="d-flex align-center gap-2">
-                        <MudTooltip Text="Refresh now">
-                            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary"
-                                           OnClick="LoadProbeResultsAsync" Disabled="_probeResultsLoading" />
-                        </MudTooltip>
-                        <MudTooltip Text="@(AutoRefreshEnabled ? "Disable auto-refresh" : "Enable auto-refresh (10s)")">
-                            <MudToggleIconButton @bind-Toggled="AutoRefreshEnabled"
-                                                 Icon="@Icons.Material.Outlined.Timer" ToggledIcon="@Icons.Material.Filled.Timer"
-                                                 Color="Color.Default" ToggledColor="Color.Primary"
-                                                 Size="Size.Medium" />
-                        </MudTooltip>
-                        @if (AutoRefreshEnabled)
-                        {
-                            <MudText Typo="Typo.caption" Color="Color.Primary">Auto-refresh on</MudText>
-                        }
-                    </MudItem>
-                </MudGrid>
-            </MudPaper>
-
-            @if (_probeResultsLoading)
-            {
-                <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-4" />
-            }
-            else if (_probeResults.Length == 0)
-            {
-                <MudAlert Severity="Severity.Info">No probe results found for the selected date range.</MudAlert>
-            }
-            else
-            {
-                <MudTable Items="@_probeResults" Dense="true" Hover="true" Striped="true"
-                          RowsPerPage="@_pageSize" T="ProbeResultResponse">
-                    <ToolBarContent>
-                        <MudSelect T="int" Value="@_pageSize" ValueChanged="@(v => _pageSize = v)"
-                                   Label="Page size" Style="max-width:120px;" Dense="true" Margin="Margin.Dense">
-                            <MudSelectItem Value="10">10</MudSelectItem>
-                            <MudSelectItem Value="25">25</MudSelectItem>
-                            <MudSelectItem Value="50">50</MudSelectItem>
-                            <MudSelectItem Value="100">100</MudSelectItem>
-                        </MudSelect>
-                    </ToolBarContent>
-                    <HeaderContent>
-                        <MudTh Style="width:50px;"></MudTh>
-                        <MudTh>Timestamp</MudTh>
-                        <MudTh>Probe</MudTh>
-                        <MudTh>Status</MudTh>
-                        <MudTh>Summary</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd>
-                            @if (!string.IsNullOrEmpty(context.MetadataJson))
-                            {
-                                <MudIconButton Icon="@(_expandedResults.Contains(context) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
-                                               Size="Size.Small" OnClick="@(() => ToggleMetadata(context))" />
-                            }
-                        </MudTd>
-                        <MudTd DataLabel="Timestamp">
-                            <MudTooltip Text="@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff")">
-                                @context.Timestamp.ToString("MM-dd HH:mm:ss")
-                            </MudTooltip>
-                        </MudTd>
-                        <MudTd DataLabel="Probe">@context.ProbeId</MudTd>
-                        <MudTd DataLabel="Status">
-                            <MudChip T="string" Color="StatusColorHelper.ToMudColor(context.Status)" Size="Size.Small">
-                                @StatusColorHelper.ToLabel(context.Status)
-                            </MudChip>
-                        </MudTd>
-                        <MudTd DataLabel="Summary">@context.Summary</MudTd>
-                    </RowTemplate>
-                    <ChildRowContent>
-                        @if (_expandedResults.Contains(context))
-                        {
-                            <MudTr>
-                                <td colspan="5" class="pa-4" style="background-color: var(--mud-palette-background-gray);">
-                                    <MudText Typo="Typo.subtitle2" Class="mb-2">Metadata</MudText>
-                                    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Style="background: transparent;">
-                                        <thead>
-                                            <tr><th>Key</th><th>Value</th></tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var kv in ParseMetadata(context.MetadataJson))
-                                            {
-                                                <tr><td><strong>@kv.Key</strong></td><td>@kv.Value</td></tr>
-                                            }
-                                        </tbody>
-                                    </MudSimpleTable>
-                                </td>
-                            </MudTr>
-                        }
-                    </ChildRowContent>
-                    <PagerContent>
-                        <MudTablePager />
-                    </PagerContent>
-                </MudTable>
-            }
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+        </MudTabPanel>
+    </MudTabs>
 }
 
 @implements IDisposable
@@ -472,8 +607,37 @@ else
     private bool _probeResultsLoading;
     private ProbeResultResponse[] _probeResults = [];
     private int _pageSize = 25;
-    private DateRange _probeResultDateRange = new(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
     private string[] _metricKeys = [];
+
+    private int _activeTab;
+    private int ActiveTab
+    {
+        get => _activeTab;
+        set
+        {
+            _activeTab = value;
+            // Analysis tab (index 1) loads its range-scoped data lazily on first activation.
+            if (value == 1 && !_analysisLoaded)
+                _ = LoadAnalysisAsync();
+        }
+    }
+
+    private StatusResponse[] _statusHistory = [];
+    private DateTime? _analysisStart = DateTime.Now.AddHours(-24);
+    private DateTime? _analysisEnd = DateTime.Now;
+
+    // The pickers capture local wall-clock time; AnalysisRange() resolves it to UTC for the API.
+    private static string LocalTzOffset()
+    {
+        var off = DateTimeOffset.Now.Offset;
+        var sign = off < TimeSpan.Zero ? "-" : "+";
+        return $"UTC{sign}{Math.Abs(off.Hours):00}:{Math.Abs(off.Minutes):00}";
+    }
+
+    private readonly HashSet<string> _selectedMetricKeys = new();
+    private readonly Dictionary<string, MetricSeriesResponse?> _analysisSeries = new();
+    private bool _analysisLoading;
+    private bool _analysisLoaded;
     private HostDeclaredMetric[] _declaredMetrics = [];
     private readonly Dictionary<string, MetricSeriesResponse?> _metricSeries = new();
     private readonly HashSet<string> _metricSeriesLoading = new();
@@ -574,8 +738,6 @@ else
                     _metricKeys = metricKeysTask.Result;
                     _ = LoadAllMetricSeriesAsync();
                 }
-
-                await LoadProbeResultsAsync();
             }
         }
         catch (Exception)
@@ -768,13 +930,7 @@ else
 
         try
         {
-            DateTimeOffset? from = _probeResultDateRange.Start.HasValue
-                ? new DateTimeOffset(_probeResultDateRange.Start.Value, TimeSpan.Zero)
-                : null;
-            DateTimeOffset? to = _probeResultDateRange.End.HasValue
-                ? new DateTimeOffset(_probeResultDateRange.End.Value.AddDays(1), TimeSpan.Zero)
-                : null;
-
+            var (from, to) = AnalysisRange();
             _probeResults = await Api.GetProbeResultsAsync(Id, from, to);
         }
         catch (Exception)
@@ -784,6 +940,105 @@ else
         finally
         {
             _probeResultsLoading = false;
+        }
+    }
+
+    private (DateTimeOffset? From, DateTimeOffset? To) AnalysisRange()
+    {
+        // Pickers show local time; resolve to the UTC instant before sending, since
+        // the server queries `timestamp with time zone` columns (Npgsql requires offset 0).
+        DateTimeOffset? from = _analysisStart.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(_analysisStart.Value, DateTimeKind.Local)).ToUniversalTime()
+            : null;
+        DateTimeOffset? to = _analysisEnd.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(_analysisEnd.Value, DateTimeKind.Local)).ToUniversalTime()
+            : null;
+        return (from, to);
+    }
+
+    private async Task ApplyQuickRange(TimeSpan span)
+    {
+        var now = DateTime.Now;
+        _analysisStart = now - span;
+        _analysisEnd = now;
+        await LoadAnalysisAsync();
+    }
+
+    private async Task LoadAnalysisAsync()
+    {
+        _analysisLoading = true;
+        StateHasChanged();
+        try
+        {
+            var (from, to) = AnalysisRange();
+
+            var historyTask = Api.GetStatusHistoryAsync(Id, from, to);
+            var seriesTasks = _metricKeys.ToDictionary(k => k, k => Api.GetMetricSeriesAsync(Id, k, 60, from, to));
+
+            try { await Task.WhenAll(seriesTasks.Values.Concat(new Task[] { historyTask })); }
+            catch { /* surface per-task results below */ }
+
+            foreach (var (k, t) in seriesTasks)
+                _analysisSeries[k] = t.IsCompletedSuccessfully ? t.Result : null;
+
+            _statusHistory = historyTask.IsCompletedSuccessfully ? historyTask.Result : [];
+
+            await LoadProbeResultsAsync();
+        }
+        catch { /* leave existing data in place */ }
+        finally
+        {
+            _analysisLoading = false;
+            _analysisLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleMetricSelection(string key)
+    {
+        if (!_selectedMetricKeys.Remove(key))
+            _selectedMetricKeys.Add(key);
+    }
+
+    private IReadOnlyList<AnalysisChart.AnalysisSeries> BuildAnalysisSeries()
+    {
+        var list = new List<AnalysisChart.AnalysisSeries>();
+        foreach (var key in _selectedMetricKeys)
+        {
+            if (_analysisSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
+            {
+                var decl = ResolveDeclaration(key);
+                list.Add(new AnalysisChart.AnalysisSeries(
+                    key, decl?.DisplayName ?? key, decl?.Unit, null, s.Points));
+            }
+        }
+        return list;
+    }
+
+    private IReadOnlyList<AnalysisChart.AnalysisEvent> BuildAnalysisEvents() =>
+        _statusHistory
+            .Where(s => s.PreviousStatus != s.CurrentStatus)
+            .OrderBy(s => s.Timestamp)
+            .Select(s => new AnalysisChart.AnalysisEvent(
+                s.Timestamp,
+                $"{s.CheckerId}: {s.PreviousStatus}→{s.CurrentStatus}",
+                null))
+            .ToList();
+
+    private async Task ToggleHostEnabledAsync()
+    {
+        if (_host is null) return;
+        try
+        {
+            await Api.UpdateHostAsync(Id, new UpdateHostRequest(
+                _host.Name, _host.Address, !_host.Enabled, _host.Tags.Select(t => t.Id).ToArray()));
+            Snackbar.Add(_host.Enabled ? "Host disabled." : "Host enabled.", Severity.Success);
+            _host = await Api.GetHostAsync(Id);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update host: {ex.Message}", Severity.Error);
         }
     }
 
