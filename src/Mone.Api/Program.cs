@@ -129,6 +129,19 @@ pluginEngine.LoadPluginsFromDirectory(pluginFullPath);
 app.Logger.LogInformation("Loaded {Count} plugin(s) from {Path}",
     pluginEngine.Registry.GetAll().Count, pluginFullPath);
 
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var materializer = scope.ServiceProvider.GetRequiredService<ProbeAssignmentMetricMaterializer>();
+        await materializer.MaterializeAllAsync(CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Startup probe-assignment metric re-materialization failed");
+    }
+}
+
 _ = Task.Run(async () =>
 {
     using var scope = app.Services.CreateScope();

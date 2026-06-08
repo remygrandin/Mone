@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Mone.Contracts.Models;
 using Mone.Contracts.Plugins;
@@ -94,6 +95,25 @@ public sealed class ProbeAssignmentMetricMaterializer
 
         await ReplaceAsync(assignment.Id, rows, ct);
         return rows.Count;
+    }
+
+    // Re-materialize every probe assignment's metric cache. Used at app startup and on
+    // housekeeping assess so declaration changes (a plugin dropping/renaming a metric) propagate
+    // without requiring each assignment to be manually re-saved. Covers both host- and group-level
+    // assignments since they share the ProbeAssignments set.
+    public async Task<int> MaterializeAllAsync(CancellationToken ct)
+    {
+        var assignments = await _db.ProbeAssignments.AsNoTracking().ToListAsync(ct);
+
+        var total = 0;
+        foreach (var assignment in assignments)
+            total += await MaterializeAsync(assignment, ct);
+
+        _logger.LogInformation(
+            "Re-materialized metric declarations for {AssignmentCount} probe assignment(s); {MetricCount} metric row(s) total",
+            assignments.Count, total);
+
+        return total;
     }
 
     private async Task ReplaceAsync(Guid assignmentId, IReadOnlyList<ProbeAssignmentMetricEntity> rows, CancellationToken ct)

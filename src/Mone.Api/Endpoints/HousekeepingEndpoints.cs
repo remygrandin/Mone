@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Mone.Api.Models;
+using Mone.Api.Services;
 using Mone.Infrastructure.Data;
 
 namespace Mone.Api.Endpoints;
@@ -22,8 +23,15 @@ public static class HousekeepingEndpoints
 
         group.MapPost("/assess", async (
             MoneDbContext db,
-            Mone.PluginEngine.PluginEngine engine) =>
+            Mone.PluginEngine.PluginEngine engine,
+            ProbeAssignmentMetricMaterializer materializer,
+            CancellationToken ct) =>
         {
+            // Refresh the metric-declaration cache before assessing so orphaned-metric detection
+            // reflects what plugins currently declare — a plugin that dropped or renamed a metric
+            // would otherwise leave a stale declaration row that hides the orphaned data.
+            await materializer.MaterializeAllAsync(ct);
+
             var installedIds = engine.Registry.GetAll()
                 .Select(r => r.Metadata.PluginId)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase)
