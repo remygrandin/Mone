@@ -6,6 +6,8 @@ namespace Mone.Api.Endpoints;
 
 public static class HousekeepingEndpoints
 {
+    private const string OrphanMetricPrefix = "orphan-metric:";
+
     private static readonly TimeSpan OneWeek = TimeSpan.FromDays(7);
     private static readonly TimeSpan OneMonth = TimeSpan.FromDays(30);
     private static readonly TimeSpan SixMonths = TimeSpan.FromDays(180);
@@ -203,6 +205,9 @@ public static class HousekeepingEndpoints
                 EstSize("notification_audit", n, totalNotificationAudit)));
         }
 
+        // orphaned metric data — metric keys in probe_results that no probe assignment declares
+        list.AddRange(await BuildOrphanedMetricCategoriesAsync(db));
+
         // disabled hosts — by age
         foreach (var (label, ts, key) in new[]
         {
@@ -258,6 +263,45 @@ public static class HousekeepingEndpoints
         return list;
     }
 
+    // A stored metric lives as a top-level JSONB key in probe_results.MetadataJson, prefixed
+    // "{assignment.NameSnakeCase}.{rawKey}" — identical to ProbeAssignmentMetricEntity.FullKey.
+    // A key is orphaned when no assignment declares that FullKey (probe removed, renamed, or its
+    // GetMetricsAsync no longer emits it). Restrict to numeric-coercible values so contextual
+    // metadata (address, ip_status, error, hint) isn't misreported as a metric — same coercion
+    // rule the metrics/series endpoint applies.
+    private static async Task<List<HousekeepingCategory>> BuildOrphanedMetricCategoriesAsync(MoneDbContext db)
+    {
+        const string sql =
+            """
+            SELECT obj_key AS "Key", COUNT(*) AS "Count"
+            FROM probe_results pr
+            CROSS JOIN LATERAL jsonb_object_keys(pr."MetadataJson") AS obj_key
+            WHERE pr."MetadataJson" IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM probe_assignment_metrics pam WHERE pam."FullKey" = obj_key)
+              AND (
+                    jsonb_typeof(pr."MetadataJson" -> obj_key) IN ('number', 'boolean')
+                    OR (jsonb_typeof(pr."MetadataJson" -> obj_key) = 'string'
+                        AND (pr."MetadataJson" ->> obj_key) ~ '^-?[0-9]+(\.[0-9]+)?$')
+                  )
+            GROUP BY obj_key
+            ORDER BY "Count" DESC, obj_key
+            """;
+
+        var rows = await db.Database.SqlQueryRaw<OrphanMetricRow>(sql).ToListAsync();
+
+        if (rows.Count == 0)
+            return [MakeCat("orphan-metrics-none", "No orphaned metric data", "Orphaned metrics", 0, null)];
+
+        return rows
+            .Select(r => MakeCat(
+                OrphanMetricPrefix + r.Key,
+                $"Metric \"{r.Key}\" — no probe declares it",
+                "Orphaned metrics",
+                r.Count,
+                null))
+            .ToList();
+    }
+
     private static HousekeepingCategory MakeCat(string key, string label, string group, long count, long? bytes)
         => new(key, label, group, count, bytes, bytes.HasValue ? FormatBytes(bytes.Value) : null);
 
@@ -274,6 +318,26 @@ public static class HousekeepingEndpoints
     private static async Task<long> CleanupAsync(MoneDbContext db, string key, string[] installedIds)
     {
         var now = DateTimeOffset.UtcNow;
+
+        // Orphaned metric cleanup strips a single key out of every probe_results row's JSONB
+        // rather than deleting rows — those rows still carry valid, declared metrics. The
+        // NOT EXISTS guard re-checks the key is still orphaned, so a stale UI can never strip a
+        // metric that a probe currently declares.
+        if (key.StartsWith(OrphanMetricPrefix, StringComparison.Ordinal))
+        {
+            var fullKey = key[OrphanMetricPrefix.Length..];
+            if (string.IsNullOrWhiteSpace(fullKey))
+                return 0;
+
+            const string strip =
+                """
+                UPDATE probe_results
+                SET "MetadataJson" = "MetadataJson" - {0}
+                WHERE jsonb_exists("MetadataJson", {0})
+                  AND NOT EXISTS (SELECT 1 FROM probe_assignment_metrics pam WHERE pam."FullKey" = {0})
+                """;
+            return await db.Database.ExecuteSqlRawAsync(strip, fullKey);
+        }
 
         return key switch
         {
@@ -316,5 +380,11 @@ public static class HousekeepingEndpoints
 
             _ => throw new KeyNotFoundException(key),
         };
+    }
+
+    private sealed class OrphanMetricRow
+    {
+        public string Key { get; set; } = "";
+        public long Count { get; set; }
     }
 }
