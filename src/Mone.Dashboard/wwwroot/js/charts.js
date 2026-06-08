@@ -55,6 +55,54 @@
         };
     }
 
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        }[c]));
+    }
+
+    // Sparklines render in very short containers (~28px), so Chart.js's canvas-drawn
+    // tooltip gets clipped to that height. This renders the tooltip into a single shared
+    // <div> appended to document.body — fixed-positioned and high z-index — so it floats
+    // on top and is never clipped by the canvas. Returned as a Chart.js `external` handler.
+    function getOrCreateTooltipEl() {
+        let el = document.getElementById('mone-chart-tooltip');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'mone-chart-tooltip';
+            el.style.cssText = 'position:fixed;pointer-events:none;z-index:3000;'
+                + 'background:rgba(33,33,33,0.92);color:#fff;border-radius:4px;'
+                + 'padding:4px 8px;font-size:11px;line-height:1.4;white-space:nowrap;'
+                + 'transform:translate(-50%,calc(-100% - 8px));opacity:0;'
+                + 'transition:opacity .1s ease;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+
+    function externalTooltipHandler(context) {
+        const el = getOrCreateTooltipEl();
+        const tooltip = context.tooltip;
+        if (!tooltip || tooltip.opacity === 0) {
+            el.style.opacity = '0';
+            return;
+        }
+
+        const lines = [];
+        (tooltip.title || []).forEach((t) => {
+            if (t) lines.push('<div style="opacity:0.7;font-size:10px;">' + escapeHtml(t) + '</div>');
+        });
+        (tooltip.body || []).forEach((b) => {
+            (b.lines || []).forEach((l) => lines.push('<div>' + escapeHtml(l) + '</div>'));
+        });
+        el.innerHTML = lines.join('');
+
+        const rect = context.chart.canvas.getBoundingClientRect();
+        el.style.left = (rect.left + tooltip.caretX) + 'px';
+        el.style.top = (rect.top + tooltip.caretY) + 'px';
+        el.style.opacity = '1';
+    }
+
     function commonInteraction(opts) {
         return {
             mode: 'index',
@@ -106,7 +154,7 @@
                     legend: { display: false },
                     tooltip: background
                         ? { enabled: false }
-                        : { enabled: true, displayColors: false, ...commonInteraction(opts) },
+                        : { enabled: false, external: externalTooltipHandler, displayColors: false, ...commonInteraction(opts) },
                 },
                 scales: {
                     x: { display: false },
