@@ -37,9 +37,14 @@
     }
 
     function formatTimestamp(iso) {
-        if (!iso) return '';
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return iso;
+        if (iso === null || iso === undefined || iso === '') return '';
+        // Accept epoch-ms (number or all-digit string) as well as ISO strings.
+        // ISO timestamps always contain non-digit chars, so an all-digit value
+        // can only be epoch ms — new Date(numericString) would otherwise be NaN.
+        const d = (typeof iso === 'number' || /^\d+$/.test(String(iso)))
+            ? new Date(Number(iso))
+            : new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
         const pad = (n) => n.toString().padStart(2, '0');
         return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
             + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
@@ -266,6 +271,16 @@
         }));
     }
 
+    // Bucket a timestamp to whole-second resolution (epoch ms floored to the second).
+    // The chart's x-axis is a category scale keyed on these values, and the tooltip/ticks
+    // only ever display down to the second — so two points from different datasets that
+    // share the same displayed second must collapse onto one x-category to line up
+    // vertically. Returns a number so labels sort numerically and Map keys compare by value.
+    function bucketSecond(ts) {
+        const ms = new Date(ts).getTime();
+        return Number.isNaN(ms) ? ts : Math.floor(ms / 1000) * 1000;
+    }
+
     window.Mone.createMultiSeries = function (canvasId, series, opts) {
         const canvas = document.getElementById(canvasId);
         if (!canvas) return false;
@@ -278,10 +293,15 @@
         const labelSet = new Set();
         const normalized = series.map((s) => {
             const pts = normPoints(s.points);
-            pts.forEach((p) => labelSet.add(p.ts));
-            return { meta: s, map: new Map(pts.map((p) => [p.ts, p.value])) };
+            const map = new Map();
+            pts.forEach((p) => {
+                const key = bucketSecond(p.ts);
+                labelSet.add(key);
+                map.set(key, p.value); // within a series, last value in a second wins
+            });
+            return { meta: s, map };
         });
-        const labels = Array.from(labelSet).sort((a, b) => new Date(a) - new Date(b));
+        const labels = Array.from(labelSet).sort((a, b) => a - b);
 
         // Distinct units in order of first appearance -> dedicated axis id.
         // The first unit owns 'y', every subsequent unit gets y1, y2, y3, ... so an

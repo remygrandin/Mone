@@ -202,8 +202,8 @@ else
                     }
                     else
                     {
-                        <MudTextField T="string" @bind-Value="_metricSearch" @bind-Value:event="oninput"
-                                      Placeholder="Search metrics..." Adornment="Adornment.Start"
+                        <MudTextField T="string" @bind-Value="_metricSearch" Immediate="true"
+                                      Placeholder="Search name, unit, plugin..." Adornment="Adornment.Start"
                                       AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
                                       Margin="Margin.Dense" Class="mb-2" />
                         @if (FilterMetricKeys().Length == 0)
@@ -340,6 +340,7 @@ else
                           RowsPerPage="@_pageSize" T="ProbeResultResponse">
                     <HeaderContent>
                         <MudTh Style="width:50px;"></MudTh>
+                        <MudTh>Instance</MudTh>
                         <MudTh>Probe</MudTh>
                         <MudTh>Timestamp</MudTh>
                         <MudTh>Status</MudTh>
@@ -353,6 +354,7 @@ else
                                                Size="Size.Small" OnClick="@(() => ToggleMetadata(context))" />
                             }
                         </MudTd>
+                        <MudTd DataLabel="Instance">@ResolveInstanceName(context)</MudTd>
                         <MudTd DataLabel="Probe">
                             <MudTooltip Text="@FullPluginLabel(context.ProbeId)">
                                 @ProbeNameFromPluginId(context.ProbeId)
@@ -374,7 +376,7 @@ else
                         @if (_expandedResults.Contains(context))
                         {
                             <MudTr>
-                                <td colspan="5" class="pa-4" style="background-color: var(--mud-palette-background-gray);">
+                                <td colspan="6" class="pa-4" style="background-color: var(--mud-palette-background-gray);">
                                     <MudText Typo="Typo.subtitle2" Class="mb-2">Metadata</MudText>
                                     <MudSimpleTable Dense="true" Hover="true" Elevation="0" Style="background: transparent;table-layout:fixed;width:100%;">
                                         <thead>
@@ -622,6 +624,9 @@ else
     private Dictionary<string, MonitoringStatus> _checkerStatusLookup = new();
     private Dictionary<string, DateTimeOffset> _lastProbeRun = new();
     private Dictionary<Guid, string> _probeAssignmentNames = new();
+    // snake_case assignment name -> friendly name; probe-result metadata keys are prefixed
+    // with the snake_case name, so this recovers the instance behind each result row.
+    private Dictionary<string, string> _probeAssignmentSnakeNames = new(StringComparer.Ordinal);
 
     private bool _probeResultsLoading;
     private ProbeResultResponse[] _probeResults = [];
@@ -708,7 +713,12 @@ else
                 catch (Exception ex) { Console.WriteLine($"[MONE] Task.WhenAll partial failure: {ex.GetType().Name}: {ex.Message}"); }
 
                 if (directProbesTask.IsCompletedSuccessfully)
+                {
                     _probeAssignmentNames = directProbesTask.Result.ToDictionary(p => p.Id, p => p.Name);
+                    _probeAssignmentSnakeNames = directProbesTask.Result
+                        .GroupBy(p => p.NameSnakeCase, StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.Ordinal);
+                }
 
                 if (declaredMetricsTask.IsCompletedSuccessfully)
                 {
@@ -780,14 +790,25 @@ else
         if (string.IsNullOrWhiteSpace(_metricSearch))
             return _metricKeys;
 
-        var term = _metricSearch.Trim();
+        // Fuzzy match: every whitespace-separated token must appear (case-insensitive)
+        // somewhere in the metric's searchable text — probe name, display name/description,
+        // unit, and plugin name (both raw id and the friendly form). This lets queries like
+        // "ping ms" narrow across fields at once instead of matching a single substring.
+        var tokens = _metricSearch.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0) return _metricKeys;
+
         return _metricKeys
             .Where(key =>
             {
                 var decl = ResolveDeclaration(key);
-                return key.Contains(term, StringComparison.OrdinalIgnoreCase)
-                    || (decl?.DisplayName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
-                    || (decl?.ProbeAssignmentName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false);
+                var haystack = string.Join(' ',
+                    key,
+                    decl?.DisplayName,
+                    decl?.Unit,
+                    decl?.ProbeAssignmentName,
+                    decl?.ProbePluginId,
+                    decl is null ? null : ProbeNameFromPluginId(decl.ProbePluginId));
+                return tokens.All(t => haystack.Contains(t, StringComparison.OrdinalIgnoreCase));
             })
             .ToArray();
     }
@@ -1164,6 +1185,24 @@ else
     {
         var at = probePluginId.IndexOf('@');
         return at > 0 ? probePluginId[..at] : probePluginId;
+    }
+
+    // Probe-result metadata keys are prefixed with the assignment's snake_case name
+    // (ProbeExecutionJob.PrefixMetadataKeys), so the prefix before the first '.' identifies
+    // the instance. Fall back to the plugin name when a result carries no usable metadata.
+    private string ResolveInstanceName(ProbeResultResponse result)
+    {
+        if (!string.IsNullOrEmpty(result.MetadataJson) && _probeAssignmentSnakeNames.Count > 0)
+        {
+            foreach (var key in ParseMetadata(result.MetadataJson).Keys)
+            {
+                var dot = key.IndexOf('.');
+                if (dot <= 0) continue;
+                if (_probeAssignmentSnakeNames.TryGetValue(key[..dot], out var name))
+                    return name;
+            }
+        }
+        return ProbeNameFromPluginId(result.ProbeId);
     }
 
     private static string FormatRelativeTime(DateTimeOffset timestamp)
