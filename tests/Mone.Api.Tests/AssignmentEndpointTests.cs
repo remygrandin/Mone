@@ -65,7 +65,7 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{hostId}/checkers",
-            new CreateCheckerAssignmentRequest("threshold"));
+            new CreateCheckerAssignmentRequest("threshold", "threshold"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 

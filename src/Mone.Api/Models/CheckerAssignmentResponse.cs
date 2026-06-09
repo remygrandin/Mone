@@ -5,5 +5,7 @@ public sealed record CheckerAssignmentResponse(
     Guid? HostId,
     Guid? GroupId,
     string CheckerPluginId,
+    string Name,
+    string NameSnakeCase,
     string? ConfigJson,
     bool Enabled);

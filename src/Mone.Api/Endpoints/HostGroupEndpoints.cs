@@ -118,6 +118,7 @@ public static class HostGroupEndpoints
             AddGroupMemberRequest request,
             MoneDbContext db,
             ProbeAssignmentNameValidator nameValidator,
+            CheckerAssignmentNameValidator checkerNameValidator,
             CancellationToken ct) =>
         {
             var hostGroup = await db.HostGroups.FindAsync(new object[] { id }, ct);
@@ -132,6 +133,10 @@ public static class HostGroupEndpoints
             var collision = await nameValidator.ValidateMembershipAddAsync(id, request.HostId, ct);
             if (collision is not null)
                 return Results.BadRequest(new { error = collision });
+
+            var checkerCollision = await checkerNameValidator.ValidateMembershipAddAsync(id, request.HostId, ct);
+            if (checkerCollision is not null)
+                return Results.BadRequest(new { error = checkerCollision });
 
             db.HostGroupMemberships.Add(new GroupMembershipEntity { GroupId = id, HostId = request.HostId });
             await db.SaveChangesAsync(ct);

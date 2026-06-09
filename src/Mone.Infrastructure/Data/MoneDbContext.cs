@@ -94,8 +94,16 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.ToTable("checker_assignments");
             e.HasKey(x => x.Id);
             e.Property(x => x.CheckerPluginId).IsRequired().HasMaxLength(256);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(128);
+            e.Property(x => x.NameSnakeCase).IsRequired().HasMaxLength(128);
             e.HasOne(x => x.Host).WithMany(h => h.CheckerAssignments).HasForeignKey(x => x.HostId);
             e.HasOne(x => x.Group).WithMany(g => g.CheckerAssignments).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.HostId, x.NameSnakeCase })
+                .IsUnique()
+                .HasFilter("\"HostId\" IS NOT NULL");
+            e.HasIndex(x => new { x.GroupId, x.NameSnakeCase })
+                .IsUnique()
+                .HasFilter("\"GroupId\" IS NOT NULL");
             e.ToTable(t => t.HasCheckConstraint("CK_checker_assignments_host_or_group", "(\"HostId\" IS NOT NULL AND \"GroupId\" IS NULL) OR (\"HostId\" IS NULL AND \"GroupId\" IS NOT NULL)"));
         });
 

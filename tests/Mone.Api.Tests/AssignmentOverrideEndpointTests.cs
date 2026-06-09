@@ -157,7 +157,7 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/checkers",
-            new CreateCheckerAssignmentRequest("cpu", ConfigJson: """{"threshold":80,"interval":60}"""));
+            new CreateCheckerAssignmentRequest("cpu", "cpu", ConfigJson: """{"threshold":80,"interval":60}"""));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
         var assignment = await assignResp.Content.ReadFromJsonAsync<CheckerAssignmentResponse>(JsonOpts);
 

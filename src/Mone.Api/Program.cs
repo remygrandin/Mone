@@ -78,6 +78,7 @@ builder.Services.AddScoped<InheritanceResolver>();
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<ExternalAuthProvisioningService>();
 builder.Services.AddScoped<ProbeAssignmentNameValidator>();
+builder.Services.AddScoped<CheckerAssignmentNameValidator>();
 builder.Services.AddScoped<ProbeAssignmentMetricMaterializer>();
 
 var ldapEnabled = builder.Configuration.GetValue<bool>("Ldap:Enabled");

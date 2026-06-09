@@ -36,6 +36,8 @@ public sealed class CheckerPipelineTests
             Id = Guid.NewGuid(),
             HostId = hostId,
             CheckerPluginId = checkerId,
+            Name = checkerId,
+            NameSnakeCase = checkerId,
             Enabled = true
         });
         await db.SaveChangesAsync();
@@ -115,6 +117,8 @@ public sealed class CheckerPipelineTests
             Id = Guid.NewGuid(),
             HostId = hostId,
             CheckerPluginId = checkerId,
+            Name = checkerId,
+            NameSnakeCase = checkerId,
             Enabled = true
         });
         await db.SaveChangesAsync();
@@ -191,6 +195,8 @@ public sealed class CheckerPipelineTests
             Id = Guid.NewGuid(),
             HostId = hostId,
             CheckerPluginId = checkerId,
+            Name = checkerId,
+            NameSnakeCase = checkerId,
             Enabled = true
         });
         await db.SaveChangesAsync();

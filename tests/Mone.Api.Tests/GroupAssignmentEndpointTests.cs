@@ -141,7 +141,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/checkers",
-            new CreateCheckerAssignmentRequest("cpu"));
+            new CreateCheckerAssignmentRequest("cpu", "cpu"));
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);

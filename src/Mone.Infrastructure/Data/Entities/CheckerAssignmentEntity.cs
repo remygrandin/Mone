@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Mone.Infrastructure.Data.Entities;
 
 public sealed class CheckerAssignmentEntity
@@ -10,4 +12,8 @@ public sealed class CheckerAssignmentEntity
     public required string CheckerPluginId { get; set; }
     public string? ConfigJson { get; set; }
     public bool Enabled { get; set; } = true;
+    [MaxLength(128)]
+    public required string Name { get; set; }
+    [MaxLength(128)]
+    public required string NameSnakeCase { get; set; }
 }

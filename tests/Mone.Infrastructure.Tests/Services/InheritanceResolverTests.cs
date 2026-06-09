@@ -20,7 +20,7 @@ public class InheritanceResolverTests
         var host = new HostEntity { Id = Guid.NewGuid(), Name = "h1", Address = "10.0.0.1", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
         db.Hosts.Add(host);
         db.ProbeAssignments.Add(new ProbeAssignmentEntity { Id = Guid.NewGuid(), HostId = host.Id, ProbePluginId = "ping", Name = "ping-direct", NameSnakeCase = "ping_direct", ScheduleCron = "*/5 * * * *" });
-        db.CheckerAssignments.Add(new CheckerAssignmentEntity { Id = Guid.NewGuid(), HostId = host.Id, CheckerPluginId = "http" });
+        db.CheckerAssignments.Add(new CheckerAssignmentEntity { Id = Guid.NewGuid(), HostId = host.Id, CheckerPluginId = "http", Name = "http-direct", NameSnakeCase = "http_direct" });
         await db.SaveChangesAsync();
 
         var resolver = new InheritanceResolver(db, NullLogger<InheritanceResolver>.Instance);
