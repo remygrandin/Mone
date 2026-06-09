@@ -18,13 +18,21 @@ else
 
 @code {
     [Parameter] public IReadOnlyList<AnalysisSeries>? Series { get; set; }
-    [Parameter] public IReadOnlyList<AnalysisEvent>? Events { get; set; }
     [Parameter] public int Width { get; set; } = 640;
     [Parameter] public int Height { get; set; } = 360;
+    // Optional: lets a parent share the canvas id so a sibling (e.g. status strips)
+    // can read this chart's plot area for alignment. Defaults to a generated id.
+    [Parameter] public string? CanvasId { get; set; }
 
-    private readonly string _canvasId = $"multi-{Guid.NewGuid():N}";
+    private string _canvasId = $"multi-{Guid.NewGuid():N}";
     private bool _disposed;
     private string? _lastSignature;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(CanvasId))
+            _canvasId = CanvasId;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -48,12 +56,6 @@ else
         var opts = new
         {
             fullWidth = true,
-            events = (Events ?? Array.Empty<AnalysisEvent>()).Select(e => new
-            {
-                timestamp = e.Timestamp,
-                label = e.Label,
-                color = e.Color,
-            }).ToArray(),
         };
 
         try
@@ -74,9 +76,6 @@ else
                 sb.Append('@').Append(s.Points[^1].Timestamp.ToUnixTimeMilliseconds());
             sb.Append('|');
         }
-        sb.Append("##");
-        foreach (var e in Events ?? Array.Empty<AnalysisEvent>())
-            sb.Append(e.Timestamp.ToUnixTimeMilliseconds()).Append(',');
         return sb.ToString();
     }
 
@@ -94,9 +93,4 @@ else
         string? Unit,
         string? Color,
         MetricSeriesPoint[] Points);
-
-    public sealed record AnalysisEvent(
-        DateTimeOffset Timestamp,
-        string Label,
-        string? Color);
 }

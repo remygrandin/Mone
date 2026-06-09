@@ -256,7 +256,16 @@ else
                 </MudItem>
 
                 <MudItem xs="12" md="8">
-                    <AnalysisChart Series="@BuildAnalysisSeries()" Events="@BuildAnalysisEvents()" Width="760" Height="380" />
+                    <div id="@_analysisFigureId" style="position:relative;width:100%;">
+                        <AnalysisChart CanvasId="@_analysisChartCanvasId" Series="@BuildAnalysisSeries()" Width="760" Height="380" />
+                        @{
+                            var (stripStart, stripEnd) = StripDomain();
+                        }
+                        <AnalysisStatusStrips FigureId="@_analysisFigureId" ChartCanvasId="@_analysisChartCanvasId"
+                                              Start="@stripStart" End="@stripEnd"
+                                              Host="@BuildHostTrack(stripStart, stripEnd)"
+                                              Checkers="@BuildCheckerTracks(stripStart, stripEnd)" />
+                    </div>
                 </MudItem>
             </MudGrid>
 
@@ -550,6 +559,7 @@ else
                 <MudSimpleTable Hover="true" Dense="true">
                     <thead>
                         <tr>
+                            <th>Checker</th>
                             <th>Plugin ID</th>
                             <th>Enabled</th>
                             <th>Source</th>
@@ -562,7 +572,8 @@ else
                         @foreach (var checker in _effectiveCheckers)
                         {
                             <tr>
-                                <td>@checker.CheckerPluginId</td>
+                                <td>@(ResolveCheckerAssignmentName(checker.AssignmentId) ?? checker.CheckerPluginId)</td>
+                                <td><code>@checker.CheckerPluginId</code></td>
                                 <td>
                                     <MudIcon Icon="@(checker.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
                                              Color="@(checker.Enabled ? Color.Success : Color.Error)" Size="Size.Small" />
@@ -635,6 +646,7 @@ else
     private Dictionary<string, MonitoringStatus> _checkerStatusLookup = new();
     private Dictionary<string, DateTimeOffset> _lastProbeRun = new();
     private Dictionary<Guid, string> _probeAssignmentNames = new();
+    private Dictionary<Guid, string> _checkerAssignmentNames = new();
     // snake_case assignment name -> friendly name; probe-result metadata keys are prefixed
     // with the snake_case name, so this recovers the instance behind each result row.
     private Dictionary<string, string> _probeAssignmentSnakeNames = new(StringComparer.Ordinal);
@@ -661,6 +673,10 @@ else
     private StatusResponse[] _statusHistory = [];
     private DateTime? _analysisStart = DateTime.Now.AddHours(-24);
     private DateTime? _analysisEnd = DateTime.Now;
+    // Stable ids shared between the analysis chart and the status strips so the strip
+    // coordinator can read the chart's plot area for horizontal alignment.
+    private readonly string _analysisFigureId = $"analysis-figure-{Guid.NewGuid():N}";
+    private readonly string _analysisChartCanvasId = $"analysis-chart-{Guid.NewGuid():N}";
 
     // The pickers capture local wall-clock time; AnalysisRange() resolves it to UTC for the API.
     private static string LocalTzOffset()
@@ -718,9 +734,10 @@ else
                 var latestProbeTask = Api.GetLatestProbeResultsPerProbeAsync(Id);
                 var metricKeysTask = Api.GetMetricKeysAsync(Id);
                 var directProbesTask = Api.GetProbeAssignmentsAsync(Id);
+                var directCheckersTask = Api.GetCheckerAssignmentsAsync(Id);
                 var declaredMetricsTask = Api.GetDeclaredMetricsAsync(Id);
 
-                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask, directProbesTask, declaredMetricsTask); }
+                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask, directProbesTask, directCheckersTask, declaredMetricsTask); }
                 catch (Exception ex) { Console.WriteLine($"[MONE] Task.WhenAll partial failure: {ex.GetType().Name}: {ex.Message}"); }
 
                 if (directProbesTask.IsCompletedSuccessfully)
@@ -730,6 +747,9 @@ else
                         .GroupBy(p => p.NameSnakeCase, StringComparer.Ordinal)
                         .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.Ordinal);
                 }
+
+                if (directCheckersTask.IsCompletedSuccessfully)
+                    _checkerAssignmentNames = directCheckersTask.Result.ToDictionary(c => c.Id, c => c.Name);
 
                 if (declaredMetricsTask.IsCompletedSuccessfully)
                 {
@@ -792,6 +812,9 @@ else
 
     private string? ResolveProbeAssignmentName(Guid assignmentId) =>
         _probeAssignmentNames.TryGetValue(assignmentId, out var n) ? n : null;
+
+    private string? ResolveCheckerAssignmentName(Guid assignmentId) =>
+        _checkerAssignmentNames.TryGetValue(assignmentId, out var n) ? n : null;
 
     private HostDeclaredMetric? ResolveDeclaration(string fullKey) =>
         _declaredMetrics.FirstOrDefault(m => m.FullKey == fullKey);
@@ -871,7 +894,8 @@ else
     {
         var effectiveTask = Api.GetEffectiveAssignmentsAsync(Id);
         var overridesTask = Api.GetOverridesAsync(Id);
-        await Task.WhenAll(effectiveTask, overridesTask);
+        var directCheckersTask = Api.GetCheckerAssignmentsAsync(Id);
+        await Task.WhenAll(effectiveTask, overridesTask, directCheckersTask);
 
         var effective = effectiveTask.Result;
         _effectiveProbes = effective?.Probes ?? [];
@@ -880,6 +904,9 @@ else
         var overrides = overridesTask.Result;
         _probeOverrides = overrides?.Probes ?? [];
         _checkerOverrides = overrides?.Checkers ?? [];
+
+        if (directCheckersTask.IsCompletedSuccessfully)
+            _checkerAssignmentNames = directCheckersTask.Result.ToDictionary(c => c.Id, c => c.Name);
     }
 
     private async Task OpenProbeOverrideDialog(EffectiveProbeAssignment probe)
@@ -1089,18 +1116,169 @@ else
         return list;
     }
 
-    private IReadOnlyList<AnalysisChart.AnalysisEvent> BuildAnalysisEvents() =>
-        _statusHistory
-            .Where(s => s.PreviousStatus != s.CurrentStatus)
-            .OrderBy(s => s.Timestamp)
-            // Changes within the same second represent a near-simultaneous event;
-            // collapse them into one point with all labels combined.
-            .GroupBy(s => new DateTimeOffset(s.Timestamp.Ticks - (s.Timestamp.Ticks % TimeSpan.TicksPerSecond), s.Timestamp.Offset))
-            .Select(g => new AnalysisChart.AnalysisEvent(
-                g.Key,
-                string.Join("\n", g.Select(s => $"{s.CheckerId}: {s.PreviousStatus}→{s.CurrentStatus}")),
-                null))
+    // ── Status strips ────────────────────────────────────────────────────────
+    // The strips share the chart's selected window. AnalysisRange() returns the
+    // UTC instants the API was queried with; fall back to the data extent when a
+    // picker is empty so the strips still span something sensible.
+    private (DateTimeOffset Start, DateTimeOffset End) StripDomain()
+    {
+        var (from, to) = AnalysisRange();
+        var start = from ?? EarliestKnown();
+        var end = to ?? DateTimeOffset.UtcNow;
+        if (end <= start) end = start.AddMinutes(1);
+        return (start, end);
+    }
+
+    private DateTimeOffset EarliestKnown()
+    {
+        DateTimeOffset? earliest = _statusHistory.Length > 0 ? _statusHistory.Min(s => s.Timestamp) : null;
+        return earliest ?? DateTimeOffset.UtcNow.AddHours(-24);
+    }
+
+    private static string StatusCss(MonitoringStatus status) => status switch
+    {
+        MonitoringStatus.Healthy => "var(--mud-palette-success)",
+        MonitoringStatus.Degraded => "var(--mud-palette-warning)",
+        MonitoringStatus.Unhealthy => "var(--mud-palette-error)",
+        MonitoringStatus.Unreachable => "var(--mud-palette-dark)",
+        _ => "var(--mud-palette-lines-default)",
+    };
+
+    // Higher == worse. Unknown sits below Healthy so it never masks real data when
+    // computing the host envelope, yet wins when nothing else is known.
+    private static int StatusSeverity(MonitoringStatus s) => s switch
+    {
+        MonitoringStatus.Unreachable => 4,
+        MonitoringStatus.Unhealthy => 3,
+        MonitoringStatus.Degraded => 2,
+        MonitoringStatus.Healthy => 1,
+        _ => 0,
+    };
+
+    private readonly record struct StatusSpan(DateTimeOffset Start, DateTimeOffset End, MonitoringStatus Status);
+
+    // Build a continuous timeline for one checker from its transition rows. Each row
+    // says "PreviousStatus held until Timestamp, then CurrentStatus took over".
+    private List<StatusSpan> BuildSpans(IReadOnlyList<StatusResponse> transitions, DateTimeOffset start, DateTimeOffset end, MonitoringStatus fallback)
+    {
+        var spans = new List<StatusSpan>();
+        var ordered = transitions.OrderBy(t => t.Timestamp).ToList();
+        if (ordered.Count == 0)
+        {
+            spans.Add(new StatusSpan(start, end, fallback));
+            return spans;
+        }
+
+        var cursor = start;
+        var current = ordered[0].PreviousStatus;
+        foreach (var tr in ordered)
+        {
+            var at = tr.Timestamp < start ? start : tr.Timestamp > end ? end : tr.Timestamp;
+            if (at > cursor)
+            {
+                spans.Add(new StatusSpan(cursor, at, current));
+                cursor = at;
+            }
+            current = tr.CurrentStatus;
+        }
+        if (cursor < end)
+            spans.Add(new StatusSpan(cursor, end, current));
+        return spans;
+    }
+
+    private MonitoringStatus StatusAt(List<StatusSpan> spans, DateTimeOffset at)
+    {
+        foreach (var s in spans)
+            if (at >= s.Start && at < s.End) return s.Status;
+        return spans.Count > 0 ? spans[^1].Status : MonitoringStatus.Unknown;
+    }
+
+    private static AnalysisStatusStrips.Segment ToSegment(StatusSpan s) =>
+        new(s.Start, s.End, StatusCss(s.Status), StatusColorHelper.ToLabel(s.Status));
+
+    private string CheckerDisplayName(string checkerPluginId)
+    {
+        var match = _effectiveCheckers.FirstOrDefault(c => c.CheckerPluginId == checkerPluginId);
+        var name = match is null ? null : ResolveCheckerAssignmentName(match.AssignmentId);
+        return string.IsNullOrWhiteSpace(name) ? checkerPluginId : name;
+    }
+
+    // One strip per checker that has a current status or history in range, plus any
+    // assigned checker even if it never reported (shown flat at its known status).
+    private List<(string Id, List<StatusSpan> Spans)> BuildCheckerSpans(DateTimeOffset start, DateTimeOffset end)
+    {
+        var ids = _effectiveCheckers.Select(c => c.CheckerPluginId)
+            .Concat(_statusHistory.Select(s => s.CheckerId))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => CheckerDisplayName(id), StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        var result = new List<(string, List<StatusSpan>)>();
+        foreach (var id in ids)
+        {
+            var transitions = _statusHistory.Where(s => s.CheckerId == id).ToList();
+            var fallback = GetCheckerStatus(id);
+            result.Add((id, BuildSpans(transitions, start, end, fallback)));
+        }
+        return result;
+    }
+
+    private IReadOnlyList<AnalysisStatusStrips.Track> BuildCheckerTracks(DateTimeOffset start, DateTimeOffset end) =>
+        BuildCheckerSpans(start, end)
+            .Select(c =>
+            {
+                var current = StatusAt(c.Spans, end);
+                return new AnalysisStatusStrips.Track(
+                    CheckerDisplayName(c.Id),
+                    c.Spans.Select(ToSegment).ToList(),
+                    StatusCss(current),
+                    StatusColorHelper.ToLabel(current));
+            })
+            .ToList();
+
+    // Host timeline = worst checker status in each interval (the envelope), so the
+    // top strip reflects overall host health over the window.
+    private AnalysisStatusStrips.Track? BuildHostTrack(DateTimeOffset start, DateTimeOffset end)
+    {
+        var checkers = BuildCheckerSpans(start, end);
+        if (checkers.Count == 0) return null;
+
+        var breakpoints = new SortedSet<DateTimeOffset> { start, end };
+        foreach (var (_, spans) in checkers)
+            foreach (var s in spans)
+            {
+                if (s.Start > start && s.Start < end) breakpoints.Add(s.Start);
+                if (s.End > start && s.End < end) breakpoints.Add(s.End);
+            }
+
+        var bps = breakpoints.ToList();
+        var hostSpans = new List<StatusSpan>();
+        for (var i = 0; i + 1 < bps.Count; i++)
+        {
+            var a = bps[i];
+            var b = bps[i + 1];
+            var mid = a + TimeSpan.FromTicks((b - a).Ticks / 2);
+            var worst = MonitoringStatus.Unknown;
+            foreach (var (_, spans) in checkers)
+            {
+                var st = StatusAt(spans, mid);
+                if (StatusSeverity(st) > StatusSeverity(worst)) worst = st;
+            }
+            // Coalesce adjacent equal-status intervals into one segment.
+            if (hostSpans.Count > 0 && hostSpans[^1].Status == worst)
+                hostSpans[^1] = hostSpans[^1] with { End = b };
+            else
+                hostSpans.Add(new StatusSpan(a, b, worst));
+        }
+
+        var currentHost = hostSpans.Count > 0 ? hostSpans[^1].Status : MonitoringStatus.Unknown;
+        return new AnalysisStatusStrips.Track(
+            "Host status",
+            hostSpans.Select(ToSegment).ToList(),
+            StatusCss(currentHost),
+            StatusColorHelper.ToLabel(currentHost));
+    }
 
     private async Task ToggleHostEnabledAsync()
     {
@@ -1346,7 +1524,7 @@ else
             try
             {
                 await Api.CreateCheckerAssignmentAsync(Id, new CreateCheckerAssignmentRequest(
-                    model.CheckerPluginId, model.ConfigJson, model.Enabled));
+                    model.CheckerPluginId, model.Name, model.ConfigJson, model.Enabled));
                 Snackbar.Add("Checker assignment created.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
@@ -1368,6 +1546,7 @@ else
             { x => x.Model, new CheckerAssignmentDialog.FormModel
                 {
                     CheckerPluginId = checker.CheckerPluginId,
+                    Name = ResolveCheckerAssignmentName(checker.AssignmentId) ?? checker.CheckerPluginId,
                     ConfigJson = checker.ConfigJson,
                     Enabled = checker.Enabled
                 }
@@ -1382,7 +1561,7 @@ else
             try
             {
                 await Api.UpdateCheckerAssignmentAsync(Id, checker.AssignmentId,
-                    new UpdateCheckerAssignmentRequest(model.CheckerPluginId, model.ConfigJson, model.Enabled));
+                    new UpdateCheckerAssignmentRequest(model.CheckerPluginId, model.Name, model.ConfigJson, model.Enabled));
                 Snackbar.Add("Checker assignment updated.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();

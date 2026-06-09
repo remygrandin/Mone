@@ -1,0 +1,95 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* Host owns the relative figure (FigureId) and the chart canvas; this component
+   only renders an empty container that the JS coordinator fills with strips. *@
+<div id="@_stripsId"></div>
+
+@code {
+    [Parameter] public string FigureId { get; set; } = "";
+    [Parameter] public string ChartCanvasId { get; set; } = "";
+    [Parameter] public DateTimeOffset Start { get; set; }
+    [Parameter] public DateTimeOffset End { get; set; }
+    [Parameter] public Track? Host { get; set; }
+    [Parameter] public IReadOnlyList<Track>? Checkers { get; set; }
+
+    private readonly string _stripsId = $"strips-{Guid.NewGuid():N}";
+    private bool _disposed;
+    private string? _lastSignature;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        if (string.IsNullOrWhiteSpace(FigureId) || string.IsNullOrWhiteSpace(ChartCanvasId)) return;
+        if (End <= Start) return;
+
+        var signature = BuildSignature();
+        if (signature == _lastSignature) return;
+        _lastSignature = signature;
+
+        var payload = new
+        {
+            domain = new
+            {
+                startMs = Start.ToUnixTimeMilliseconds(),
+                endMs = End.ToUnixTimeMilliseconds(),
+            },
+            sameDay = Start.ToLocalTime().Date == End.ToLocalTime().Date,
+            host = Host is null ? null : MapTrack(Host),
+            checkers = (Checkers ?? Array.Empty<Track>()).Select(MapTrack).ToArray(),
+        };
+
+        try
+        {
+            await JS.InvokeVoidAsync("Mone.createStatusStrips", FigureId, _stripsId, ChartCanvasId, payload);
+        }
+        catch (JSDisconnectedException) { /* circuit gone */ }
+        catch (TaskCanceledException) { /* navigated away */ }
+    }
+
+    private static object MapTrack(Track t) => new
+    {
+        label = t.Label,
+        currentColor = t.CurrentColor,
+        currentLabel = t.CurrentLabel,
+        segments = t.Segments.Select(s => new
+        {
+            startMs = s.Start.ToUnixTimeMilliseconds(),
+            endMs = s.End.ToUnixTimeMilliseconds(),
+            color = s.Color,
+            statusLabel = s.StatusLabel,
+        }).ToArray(),
+    };
+
+    private string BuildSignature()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append(Start.ToUnixTimeMilliseconds()).Append('-').Append(End.ToUnixTimeMilliseconds()).Append('#');
+        if (Host is not null) sb.Append('H').Append(Host.Segments.Count).Append(',').Append(Host.CurrentLabel);
+        sb.Append('#');
+        foreach (var c in Checkers ?? Array.Empty<Track>())
+            sb.Append(c.Label).Append(':').Append(c.Segments.Count).Append(',').Append(c.CurrentLabel).Append('|');
+        return sb.ToString();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        try { await JS.InvokeVoidAsync("Mone.destroyStatusStrips", FigureId); }
+        catch { /* JS gone */ }
+    }
+
+    public sealed record Segment(
+        DateTimeOffset Start,
+        DateTimeOffset End,
+        string Color,
+        string StatusLabel);
+
+    public sealed record Track(
+        string Label,
+        IReadOnlyList<Segment> Segments,
+        string? CurrentColor,
+        string? CurrentLabel);
+}

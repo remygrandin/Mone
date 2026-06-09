@@ -335,43 +335,8 @@
             };
         });
 
-        // Pre-compute label timestamps (ms) for event-line matching.
+        // Pre-compute label timestamps (ms) for tick formatting.
         const labelMs = labels.map((l) => new Date(l).getTime());
-        const events = (opts.events || []).map((e) => ({
-            ms: new Date(e.timestamp ?? e.Timestamp).getTime(),
-            label: e.label ?? e.Label ?? '',
-            color: e.color ?? e.Color ?? 'rgba(229, 57, 53, 0.7)',
-        })).filter((e) => !Number.isNaN(e.ms));
-
-        const eventLinePlugin = {
-            id: 'moneEventLines',
-            afterDraw(chart) {
-                if (!events.length || !labelMs.length) return;
-                const xScale = chart.scales.x;
-                const area = chart.chartArea;
-                const ctx = chart.ctx;
-                ctx.save();
-                events.forEach((ev) => {
-                    // Nearest label index by absolute time distance.
-                    let bestIdx = 0;
-                    let bestDiff = Infinity;
-                    for (let i = 0; i < labelMs.length; i++) {
-                        const diff = Math.abs(labelMs[i] - ev.ms);
-                        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
-                    }
-                    const x = xScale.getPixelForValue(bestIdx);
-                    if (x < area.left || x > area.right) return;
-                    ctx.beginPath();
-                    ctx.moveTo(x, area.top);
-                    ctx.lineTo(x, area.bottom);
-                    ctx.lineWidth = 1.5;
-                    ctx.strokeStyle = ev.color;
-                    ctx.setLineDash([4, 3]);
-                    ctx.stroke();
-                });
-                ctx.restore();
-            },
-        };
 
         let sameDay = true;
         if (labelMs.length) {
@@ -440,7 +405,6 @@
                 },
                 scales: scales,
             },
-            plugins: [eventLinePlugin],
         });
         window.__moneCharts[canvasId] = chart;
         return true;
@@ -448,5 +412,266 @@
 
     window.Mone.destroyChart = function (canvasId) {
         destroyExisting(canvasId);
+    };
+
+    // --- Status strips ------------------------------------------------------
+    // Horizontal status timelines drawn beneath the analysis chart: one strip for
+    // the host's overall status and one per checker (collapsible). Every strip's
+    // colored track is inset to the chart's plot area so it lines up with the graph,
+    // and a single dashed "sync" bar follows the cursor across the chart and all
+    // strips. Hovering a strip shows a plain-text tooltip with the timecode and the
+    // status at that instant.
+    window.__moneStrips = window.__moneStrips || {};
+
+    function chartPlotArea(chartCanvasId) {
+        const chart = window.__moneCharts[chartCanvasId];
+        if (!chart || !chart.chartArea) return null;
+        return { left: chart.chartArea.left, right: chart.chartArea.right };
+    }
+
+    function showStripTooltip(clientX, topY, text) {
+        const el = getOrCreateTooltipEl();
+        el.textContent = text;
+        el.style.left = clientX + 'px';
+        el.style.top = (topY + window.scrollY) + 'px';
+        el.style.opacity = '1';
+    }
+
+    function hideStripTooltip() {
+        const el = document.getElementById('mone-chart-tooltip');
+        if (el) el.style.opacity = '0';
+    }
+
+    window.Mone.destroyStatusStrips = function (figureId) {
+        const st = window.__moneStrips[figureId];
+        if (st) {
+            try { st.cleanup(); } catch (_) { /* nodes already gone */ }
+            delete window.__moneStrips[figureId];
+        }
+    };
+
+    window.Mone.createStatusStrips = function (figureId, stripsContainerId, chartCanvasId, payload) {
+        const figure = document.getElementById(figureId);
+        const container = document.getElementById(stripsContainerId);
+        if (!figure || !container) return false;
+        window.Mone.destroyStatusStrips(figureId);
+        payload = payload || {};
+        const dom = payload.domain || {};
+        const startMs = Number(dom.startMs);
+        const endMs = Number(dom.endMs);
+        const span = Math.max(1, endMs - startMs);
+        const sameDay = !!payload.sameDay;
+        const host = payload.host || null;
+        const checkers = payload.checkers || [];
+
+        const pad = (n) => n.toString().padStart(2, '0');
+        const fmtTick = (ms) => {
+            const d = new Date(ms);
+            const t = pad(d.getHours()) + ':' + pad(d.getMinutes());
+            return sameDay ? t : (d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + t);
+        };
+        const fmtFull = (ms) => {
+            const d = new Date(ms);
+            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+                + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        };
+        const frac = (ms) => Math.min(1, Math.max(0, (ms - startMs) / span));
+
+        const tracks = [];   // { trackEl, segments, label }
+        const legends = [];  // legend row elements (ticks repositioned on layout)
+
+        container.innerHTML = '';
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;width:100%;font-size:11px;';
+        container.appendChild(wrap);
+
+        function addStrip(parent, label, segments, opts) {
+            opts = opts || {};
+            const block = document.createElement('div');
+            block.style.cssText = 'margin:0 0 6px 0;';
+            // caption (full width, above the track so long names stay readable)
+            const cap = document.createElement('div');
+            cap.style.cssText = 'display:flex;align-items:center;gap:6px;line-height:1.4;'
+                + 'color:var(--mud-palette-text-secondary);font-weight:' + (opts.bold ? '600' : '400') + ';';
+            const name = document.createElement('span');
+            name.textContent = label;
+            name.style.cssText = 'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+            cap.appendChild(name);
+            if (opts.currentColor) {
+                const dot = document.createElement('span');
+                dot.style.cssText = 'width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:' + opts.currentColor + ';';
+                cap.appendChild(dot);
+                if (opts.currentLabel) {
+                    const cl = document.createElement('span');
+                    cl.textContent = opts.currentLabel;
+                    cl.style.cssText = 'font-size:10px;';
+                    cap.appendChild(cl);
+                }
+            }
+            block.appendChild(cap);
+            // track (inset to plot area in layout())
+            const trackRow = document.createElement('div');
+            trackRow.style.cssText = 'position:relative;height:' + (opts.height || 16) + 'px;';
+            const track = document.createElement('div');
+            track.style.cssText = 'position:absolute;top:0;height:100%;border-radius:3px;overflow:hidden;'
+                + 'background:var(--mud-palette-background-grey);cursor:crosshair;';
+            (segments || []).forEach((s) => {
+                const l = frac(s.startMs) * 100;
+                const r = frac(s.endMs) * 100;
+                const seg = document.createElement('div');
+                seg.style.cssText = 'position:absolute;top:0;height:100%;left:' + l + '%;width:'
+                    + Math.max(0, r - l) + '%;background:' + (s.color || '#9e9e9e') + ';';
+                track.appendChild(seg);
+            });
+            trackRow.appendChild(track);
+            block.appendChild(trackRow);
+            parent.appendChild(block);
+
+            const entry = { track, segments: segments || [], label };
+            tracks.push(entry);
+            track.addEventListener('pointermove', (e) => onTrackHover(e, entry));
+            track.addEventListener('pointerleave', onLeave);
+            return entry;
+        }
+
+        function addLegend(parent) {
+            const row = document.createElement('div');
+            row.style.cssText = 'position:relative;height:16px;margin:2px 0 8px 0;color:var(--mud-palette-text-secondary);';
+            const ticks = 6;
+            for (let i = 0; i <= ticks; i++) {
+                const sp = document.createElement('span');
+                sp.dataset.frac = String(i / ticks);
+                sp.textContent = fmtTick(startMs + (i / ticks) * span);
+                sp.style.cssText = 'position:absolute;top:0;transform:translateX(-50%);white-space:nowrap;';
+                row.appendChild(sp);
+            }
+            parent.appendChild(row);
+            legends.push(row);
+            return row;
+        }
+
+        // Host strip + its legend (always visible).
+        if (host) {
+            addStrip(wrap, host.label || 'Host', host.segments, {
+                bold: true, height: 18, currentColor: host.currentColor, currentLabel: host.currentLabel,
+            });
+        }
+        addLegend(wrap);
+
+        // Collapsible checker section.
+        if (checkers.length) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            let open = false;
+            const arrow = () => (open ? '▾' : '▸');
+            const setText = () => { toggle.textContent = arrow() + ' Checkers (' + checkers.length + ')'; };
+            toggle.style.cssText = 'background:none;border:none;cursor:pointer;padding:2px 0;margin:0 0 4px 0;'
+                + 'color:var(--mud-palette-primary);font-size:12px;font-weight:600;';
+            setText();
+            wrap.appendChild(toggle);
+
+            const panel = document.createElement('div');
+            panel.style.cssText = 'display:none;';
+            wrap.appendChild(panel);
+
+            checkers.forEach((c, i) => {
+                addStrip(panel, c.label || ('Checker ' + (i + 1)), c.segments, {
+                    height: 14, currentColor: c.currentColor, currentLabel: c.currentLabel,
+                });
+                // A legend every 5 checker strips so long lists stay readable.
+                if ((i + 1) % 5 === 0 && i + 1 < checkers.length) addLegend(panel);
+            });
+            // Always close the section with a legend for the sub-strips.
+            addLegend(panel);
+
+            toggle.addEventListener('click', () => {
+                open = !open;
+                panel.style.display = open ? 'block' : 'none';
+                setText();
+                layout();
+            });
+        }
+
+        // Shared sync bar spanning the chart + all strips.
+        const sync = document.createElement('div');
+        sync.style.cssText = 'position:absolute;top:0;width:0;pointer-events:none;opacity:0;z-index:5;'
+            + 'border-left:1px dashed var(--mud-palette-text-primary);';
+        figure.appendChild(sync);
+
+        let plotLeft = 48;
+        let plotRight = 0;
+        function layout() {
+            const plot = chartPlotArea(chartCanvasId);
+            const cw = container.clientWidth || figure.clientWidth || 0;
+            if (plot) { plotLeft = plot.left; plotRight = plot.right; }
+            else { plotLeft = 48; plotRight = cw; }
+            const w = Math.max(1, plotRight - plotLeft);
+            tracks.forEach((t) => { t.track.style.left = plotLeft + 'px'; t.track.style.width = w + 'px'; });
+            legends.forEach((lg) => {
+                lg.querySelectorAll('span').forEach((sp) => {
+                    sp.style.left = (plotLeft + parseFloat(sp.dataset.frac) * w) + 'px';
+                });
+            });
+        }
+
+        function placeSync(fr) {
+            const w = Math.max(1, plotRight - plotLeft);
+            sync.style.left = (plotLeft + fr * w) + 'px';
+            sync.style.height = figure.clientHeight + 'px';
+            sync.style.opacity = '0.55';
+        }
+        function hideSync() { sync.style.opacity = '0'; }
+
+        function onTrackHover(e, entry) {
+            const rect = entry.track.getBoundingClientRect();
+            const fr = Math.min(1, Math.max(0, (e.clientX - rect.left) / Math.max(1, rect.width)));
+            placeSync(fr);
+            const ms = startMs + fr * span;
+            const seg = entry.segments.find((s) => ms >= s.startMs && ms < s.endMs)
+                || entry.segments[entry.segments.length - 1];
+            const statusLabel = seg ? (seg.statusLabel || 'Unknown') : 'Unknown';
+            showStripTooltip(e.clientX, rect.top, fmtFull(ms) + '  —  ' + entry.label + ': ' + statusLabel);
+        }
+        function onLeave() { hideSync(); hideStripTooltip(); }
+
+        // Cursor over the chart drives the same sync bar.
+        const canvas = document.getElementById(chartCanvasId);
+        function onChartMove(e) {
+            const plot = chartPlotArea(chartCanvasId);
+            if (!plot) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            if (x < plot.left || x > plot.right) { hideSync(); return; }
+            placeSync((x - plot.left) / Math.max(1, plot.right - plot.left));
+        }
+        if (canvas) {
+            canvas.addEventListener('pointermove', onChartMove);
+            canvas.addEventListener('pointerleave', hideSync);
+        }
+
+        const ro = ('ResizeObserver' in window) ? new ResizeObserver(() => layout()) : null;
+        if (ro) ro.observe(container);
+
+        // The chart renders on its own async cycle; wait for its plot area before first layout.
+        let tries = 0;
+        (function ready() {
+            if (chartPlotArea(chartCanvasId) || tries > 30) { layout(); return; }
+            tries++;
+            requestAnimationFrame(ready);
+        })();
+
+        window.__moneStrips[figureId] = {
+            cleanup() {
+                if (ro) ro.disconnect();
+                if (canvas) {
+                    canvas.removeEventListener('pointermove', onChartMove);
+                    canvas.removeEventListener('pointerleave', hideSync);
+                }
+                if (sync.parentNode) sync.parentNode.removeChild(sync);
+                container.innerHTML = '';
+                hideStripTooltip();
+            },
+        };
+        return true;
     };
 })();
