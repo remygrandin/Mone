@@ -340,8 +340,8 @@ else
                           RowsPerPage="@_pageSize" T="ProbeResultResponse">
                     <HeaderContent>
                         <MudTh Style="width:50px;"></MudTh>
-                        <MudTh>Instance</MudTh>
                         <MudTh>Probe</MudTh>
+                        <MudTh>Plugin ID</MudTh>
                         <MudTh>Timestamp</MudTh>
                         <MudTh>Status</MudTh>
                         <MudTh>Summary</MudTh>
@@ -354,8 +354,8 @@ else
                                                Size="Size.Small" OnClick="@(() => ToggleMetadata(context))" />
                             }
                         </MudTd>
-                        <MudTd DataLabel="Instance">@ResolveInstanceName(context)</MudTd>
-                        <MudTd DataLabel="Probe">
+                        <MudTd DataLabel="Probe">@ResolveInstanceName(context)</MudTd>
+                        <MudTd DataLabel="Plugin ID">
                             <MudTooltip Text="@FullPluginLabel(context.ProbeId)">
                                 @ProbeNameFromPluginId(context.ProbeId)
                             </MudTooltip>
@@ -1066,8 +1066,13 @@ else
             if (_analysisSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
             {
                 var decl = ResolveDeclaration(key);
+                var label = decl is null
+                    ? key
+                    : string.IsNullOrWhiteSpace(decl.ProbeAssignmentName)
+                        ? decl.DisplayName
+                        : $"{decl.ProbeAssignmentName}: {decl.DisplayName}";
                 list.Add(new AnalysisChart.AnalysisSeries(
-                    key, decl?.DisplayName ?? key, decl?.Unit, null, s.Points));
+                    key, label, decl?.Unit, null, s.Points));
             }
         }
         return list;
