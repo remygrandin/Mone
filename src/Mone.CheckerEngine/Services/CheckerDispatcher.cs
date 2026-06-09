@@ -52,7 +52,7 @@ public sealed class CheckerDispatcher(
         var history = new MetricHistoryAccessor(db);
         var evalContext = new CheckerEvaluationContext(targetId, triggeringProbeId, triggeringResult, history, ct);
 
-        StatusChange statusChange;
+        StatusChange? statusChange;
         try
         {
             await checker.InitializeAsync(pluginContext);
@@ -61,6 +61,13 @@ public sealed class CheckerDispatcher(
         catch (Exception ex)
         {
             logger.LogError(ex, "Checker {CheckerId} evaluation failed for target {TargetId}", checkerId, targetId);
+            return;
+        }
+
+        if (statusChange is null)
+        {
+            logger.LogDebug(
+                "Checker {CheckerId} skipped target {TargetId} (no opinion on this result)", checkerId, targetId);
             return;
         }
 

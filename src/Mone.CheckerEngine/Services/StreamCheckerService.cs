@@ -93,6 +93,6 @@ public sealed class StreamCheckerService(
         var registration = pluginEngine.Registry.Get(checkerId);
         if (registration?.Plugin is not ICheckerPlugin checker)
             return false;
-        return checker.InvocationMode == CheckerInvocationMode.OnProbeResult;
+        return checker.InvocationMode.HasFlag(CheckerInvocationMode.OnProbeResult);
     }
 }

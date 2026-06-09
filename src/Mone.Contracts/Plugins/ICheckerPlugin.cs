@@ -8,5 +8,5 @@ public interface ICheckerPlugin : IPlugin
 
     TimeSpan? Interval { get; }
 
-    Task<StatusChange> EvaluateAsync(CheckerEvaluationContext context);
+    Task<StatusChange?> EvaluateAsync(CheckerEvaluationContext context);
 }

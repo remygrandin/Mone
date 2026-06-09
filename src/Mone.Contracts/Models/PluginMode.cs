@@ -12,8 +12,9 @@ public enum InstantiationMode
     Batch
 }
 
+[Flags]
 public enum CheckerInvocationMode
 {
-    OnProbeResult,
-    OnInterval
+    OnProbeResult = 1,
+    OnInterval = 2
 }

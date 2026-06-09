@@ -15,7 +15,7 @@ public sealed class ThresholdCheckerPlugin : ICheckerPlugin
 
     public Task InitializeAsync(IPluginContext context) => Task.CompletedTask;
 
-    public Task<StatusChange> EvaluateAsync(CheckerEvaluationContext context)
+    public Task<StatusChange?> EvaluateAsync(CheckerEvaluationContext context)
     {
         var result = context.TriggeringResult
             ?? throw new InvalidOperationException("TestCheckerPlugin requires a triggering probe result");
@@ -24,7 +24,7 @@ public sealed class ThresholdCheckerPlugin : ICheckerPlugin
             ? MonitoringStatus.Healthy
             : MonitoringStatus.Unhealthy;
 
-        return Task.FromResult(new StatusChange(
+        return Task.FromResult<StatusChange?>(new StatusChange(
             context.TargetId,
             MonitoringStatus.Unknown,
             newStatus,

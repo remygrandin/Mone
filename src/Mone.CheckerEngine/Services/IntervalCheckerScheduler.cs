@@ -69,7 +69,7 @@ public sealed class IntervalCheckerScheduler(
                 var registration = pluginEngine.Registry.Get(assignment.CheckerPluginId);
                 if (registration?.Plugin is not ICheckerPlugin checker)
                     continue;
-                if (checker.InvocationMode != CheckerInvocationMode.OnInterval)
+                if (!checker.InvocationMode.HasFlag(CheckerInvocationMode.OnInterval))
                     continue;
 
                 if (checker.Interval is not TimeSpan interval || interval <= TimeSpan.Zero)
