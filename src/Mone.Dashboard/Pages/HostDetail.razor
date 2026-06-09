@@ -1056,9 +1056,12 @@ else
         _statusHistory
             .Where(s => s.PreviousStatus != s.CurrentStatus)
             .OrderBy(s => s.Timestamp)
-            .Select(s => new AnalysisChart.AnalysisEvent(
-                s.Timestamp,
-                $"{s.CheckerId}: {s.PreviousStatus}→{s.CurrentStatus}",
+            // Changes within the same second represent a near-simultaneous event;
+            // collapse them into one point with all labels combined.
+            .GroupBy(s => new DateTimeOffset(s.Timestamp.Ticks - (s.Timestamp.Ticks % TimeSpan.TicksPerSecond), s.Timestamp.Offset))
+            .Select(g => new AnalysisChart.AnalysisEvent(
+                g.Key,
+                string.Join("\n", g.Select(s => $"{s.CheckerId}: {s.PreviousStatus}→{s.CurrentStatus}")),
                 null))
             .ToList();
 

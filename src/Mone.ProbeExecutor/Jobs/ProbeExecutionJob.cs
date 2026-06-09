@@ -40,7 +40,7 @@ public sealed class ProbeExecutionJob(
             return;
         }
 
-        var probe = registration.Plugin as IProbePlugin;
+        var probe = ResolveProbeInstance(registration);
         if (probe is null)
         {
             logger.LogError("Plugin {ProbeId} is not an IProbePlugin", probePluginId);
@@ -123,6 +123,18 @@ public sealed class ProbeExecutionJob(
                 "Probe {ProbeId} execution failed for target {TargetId} after {DurationMs}ms",
                 probePluginId, targetId, sw.ElapsedMilliseconds);
         }
+    }
+
+    // PerTarget plugins (e.g. Ping) carry per-assignment config in mutable instance fields.
+    // The registry holds one shared instance, so concurrent jobs would clobber each other's
+    // config via InitializeAsync. Honor the declared mode by giving each execution its own
+    // instance; Batch plugins keep the shared registry instance.
+    private static IProbePlugin? ResolveProbeInstance(Mone.PluginEngine.PluginRegistration registration)
+    {
+        if (registration.Metadata.InstantiationMode == InstantiationMode.PerTarget)
+            return Activator.CreateInstance(registration.Plugin.GetType()) as IProbePlugin;
+
+        return registration.Plugin as IProbePlugin;
     }
 
     internal async Task<IReadOnlyDictionary<string, string>> BuildMergedConfigAsync(
