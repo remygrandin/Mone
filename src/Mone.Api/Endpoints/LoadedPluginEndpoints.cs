@@ -16,6 +16,7 @@ public static class LoadedPluginEndpoints
                 r.Metadata.PluginId,
                 r.Metadata.Name,
                 r.Metadata.Version.ToString(),
+                r.Metadata.InformationalVersion,
                 r.Metadata.Description,
                 r.Metadata.Kind.ToString(),
                 r.Metadata.ProbeMode?.ToString(),

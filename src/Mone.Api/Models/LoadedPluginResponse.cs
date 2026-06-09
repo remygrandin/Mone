@@ -6,6 +6,7 @@ public sealed record LoadedPluginResponse(
     string PluginId,
     string Name,
     string Version,
+    string? InformationalVersion,
     string Description,
     string Kind,
     string? ProbeMode,

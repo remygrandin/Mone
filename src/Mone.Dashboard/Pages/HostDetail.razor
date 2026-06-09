@@ -202,33 +202,55 @@ else
                     }
                     else
                     {
-                        @foreach (var key in _metricKeys)
+                        <MudTextField T="string" @bind-Value="_metricSearch" @bind-Value:event="oninput"
+                                      Placeholder="Search metrics..." Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true"
+                                      Margin="Margin.Dense" Class="mb-2" />
+                        @if (FilterMetricKeys().Length == 0)
                         {
-                            var decl = ResolveDeclaration(key);
-                            var displayName = decl?.DisplayName ?? key;
-                            var unit = decl?.Unit;
-                            var mapping = _metricValueMaps.TryGetValue(key, out var mv) ? mv : null;
-                            var selected = _selectedMetricKeys.Contains(key);
-                            <MudPaper @key="@key" Outlined="true" Class="pa-2 mb-2"
-                                      Style="@($"cursor:pointer;{(selected ? "outline:2px solid var(--mud-palette-primary);outline-offset:-1px;" : "")}")"
-                                      @onclick="@(() => ToggleMetricSelection(key))">
-                                <div style="display:flex;align-items:center;gap:8px;">
-                                    <MudIcon Icon="@(selected ? Icons.Material.Filled.CheckBox : Icons.Material.Filled.CheckBoxOutlineBlank)"
-                                             Size="Size.Small" Color="@(selected ? Color.Primary : Color.Default)" />
-                                    <div style="flex:1;min-width:0;">
-                                        <MudText Typo="Typo.body2" Style="font-weight:500;">@displayName@(unit is null ? "" : $" ({unit})")</MudText>
-                                        @if (_analysisSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
-                                        {
-                                            <Sparkline Points="@s.Points" FullWidth="true" Height="28"
-                                                       Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" />
-                                        }
-                                        else
-                                        {
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">no data in range</MudText>
-                                        }
-                                    </div>
-                                </div>
-                            </MudPaper>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">No metrics match the search.</MudText>
+                        }
+                        else
+                        {
+                            <div style="max-height:560px;overflow-y:auto;padding-right:4px;">
+                                @foreach (var key in FilterMetricKeys())
+                                {
+                                    var decl = ResolveDeclaration(key);
+                                    var displayName = decl?.DisplayName ?? key;
+                                    var unit = decl?.Unit;
+                                    var probeName = decl?.ProbeAssignmentName;
+                                    var mapping = _metricValueMaps.TryGetValue(key, out var mv) ? mv : null;
+                                    var selected = _selectedMetricKeys.Contains(key);
+                                    <MudPaper @key="@key" Outlined="true" Class="pa-2 mb-2"
+                                              Style="@($"cursor:pointer;{(selected ? "outline:2px solid var(--mud-palette-primary);outline-offset:-1px;" : "")}")"
+                                              @onclick="@(() => ToggleMetricSelection(key))">
+                                        <div style="display:flex;align-items:center;gap:8px;">
+                                            <MudIcon Icon="@(selected ? Icons.Material.Filled.CheckBox : Icons.Material.Filled.CheckBoxOutlineBlank)"
+                                                     Size="Size.Small" Color="@(selected ? Color.Primary : Color.Default)" />
+                                            <div style="flex:1;min-width:0;">
+                                                <div style="display:flex;align-items:center;gap:8px;">
+                                                    <MudText Typo="Typo.body2" Style="flex:1;min-width:0;font-weight:500;">@displayName@(unit is null ? "" : $" ({unit})")</MudText>
+                                                    @if (!string.IsNullOrEmpty(probeName))
+                                                    {
+                                                        <MudTooltip Text="@($"Probe: {probeName}")">
+                                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Secondary" Class="ma-0">@probeName</MudChip>
+                                                        </MudTooltip>
+                                                    }
+                                                </div>
+                                                @if (_analysisSeries.TryGetValue(key, out var s) && s is not null && s.Points.Length > 0)
+                                                {
+                                                    <Sparkline Points="@s.Points" FullWidth="true" Height="28"
+                                                               Unit="@unit" DisplayName="@displayName" ValueMapping="@mapping" />
+                                                }
+                                                else
+                                                {
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">no data in range</MudText>
+                                                }
+                                            </div>
+                                        </div>
+                                    </MudPaper>
+                                }
+                            </div>
                         }
                     }
                 </MudItem>
@@ -316,19 +338,10 @@ else
             {
                 <MudTable Items="@_probeResults" Dense="true" Hover="true" Striped="true"
                           RowsPerPage="@_pageSize" T="ProbeResultResponse">
-                    <ToolBarContent>
-                        <MudSelect T="int" Value="@_pageSize" ValueChanged="@(v => _pageSize = v)"
-                                   Label="Page size" Style="max-width:120px;" Dense="true" Margin="Margin.Dense">
-                            <MudSelectItem Value="10">10</MudSelectItem>
-                            <MudSelectItem Value="25">25</MudSelectItem>
-                            <MudSelectItem Value="50">50</MudSelectItem>
-                            <MudSelectItem Value="100">100</MudSelectItem>
-                        </MudSelect>
-                    </ToolBarContent>
                     <HeaderContent>
                         <MudTh Style="width:50px;"></MudTh>
-                        <MudTh>Timestamp</MudTh>
                         <MudTh>Probe</MudTh>
+                        <MudTh>Timestamp</MudTh>
                         <MudTh>Status</MudTh>
                         <MudTh>Summary</MudTh>
                     </HeaderContent>
@@ -340,12 +353,16 @@ else
                                                Size="Size.Small" OnClick="@(() => ToggleMetadata(context))" />
                             }
                         </MudTd>
+                        <MudTd DataLabel="Probe">
+                            <MudTooltip Text="@FullPluginLabel(context.ProbeId)">
+                                @ProbeNameFromPluginId(context.ProbeId)
+                            </MudTooltip>
+                        </MudTd>
                         <MudTd DataLabel="Timestamp">
                             <MudTooltip Text="@context.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")">
                                 @context.Timestamp.ToLocalTime().ToString("MM-dd HH:mm:ss")
                             </MudTooltip>
                         </MudTd>
-                        <MudTd DataLabel="Probe">@context.ProbeId</MudTd>
                         <MudTd DataLabel="Status">
                             <MudChip T="string" Color="StatusColorHelper.ToMudColor(context.Status)" Size="Size.Small">
                                 @StatusColorHelper.ToLabel(context.Status)
@@ -359,14 +376,14 @@ else
                             <MudTr>
                                 <td colspan="5" class="pa-4" style="background-color: var(--mud-palette-background-gray);">
                                     <MudText Typo="Typo.subtitle2" Class="mb-2">Metadata</MudText>
-                                    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Style="background: transparent;">
+                                    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Style="background: transparent;table-layout:fixed;width:100%;">
                                         <thead>
-                                            <tr><th>Key</th><th>Value</th></tr>
+                                            <tr><th style="width:280px;">Key</th><th>Value</th></tr>
                                         </thead>
                                         <tbody>
                                             @foreach (var kv in ParseMetadata(context.MetadataJson))
                                             {
-                                                <tr><td><strong>@kv.Key</strong></td><td>@kv.Value</td></tr>
+                                                <tr><td style="width:280px;word-break:break-word;"><strong>@kv.Key</strong></td><td style="word-break:break-word;">@kv.Value</td></tr>
                                             }
                                         </tbody>
                                     </MudSimpleTable>
@@ -419,6 +436,7 @@ else
                 <MudSimpleTable Hover="true" Dense="true">
                     <thead>
                         <tr>
+                            <th>Probe</th>
                             <th>Plugin ID</th>
                             <th>Schedule</th>
                             <th>Enabled</th>
@@ -432,7 +450,8 @@ else
                         @foreach (var probe in _effectiveProbes)
                         {
                             <tr>
-                                <td>@probe.ProbePluginId</td>
+                                <td>@(ResolveProbeAssignmentName(probe.AssignmentId) ?? ProbeNameFromPluginId(probe.ProbePluginId))</td>
+                                <td><code>@FullPluginLabel(probe.ProbePluginId)</code></td>
                                 <td><code>@probe.ScheduleCron</code></td>
                                 <td>
                                     <MudIcon Icon="@(probe.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
@@ -608,6 +627,7 @@ else
     private ProbeResultResponse[] _probeResults = [];
     private int _pageSize = 25;
     private string[] _metricKeys = [];
+    private string _metricSearch = string.Empty;
 
     private int _activeTab;
     private int ActiveTab
@@ -754,6 +774,23 @@ else
 
     private HostDeclaredMetric? ResolveDeclaration(string fullKey) =>
         _declaredMetrics.FirstOrDefault(m => m.FullKey == fullKey);
+
+    private string[] FilterMetricKeys()
+    {
+        if (string.IsNullOrWhiteSpace(_metricSearch))
+            return _metricKeys;
+
+        var term = _metricSearch.Trim();
+        return _metricKeys
+            .Where(key =>
+            {
+                var decl = ResolveDeclaration(key);
+                return key.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || (decl?.DisplayName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (decl?.ProbeAssignmentName?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false);
+            })
+            .ToArray();
+    }
 
     private static IReadOnlyDictionary<double, string>? ParseValueMapping(string? json)
     {
@@ -1108,6 +1145,22 @@ else
     {
         var plugin = _loadedPlugins.FirstOrDefault(p => p.PluginId == probePluginId);
         return string.Equals(plugin?.ProbeMode, "Passive", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // The plugin id keys on the declared semver (e.g. PingProbe@1.0.0), which does not move
+    // with CI prerelease bumps. Surface the assembly's informational version when we have it.
+    private string FullPluginLabel(string probePluginId)
+    {
+        var plugin = _loadedPlugins.FirstOrDefault(p => p.PluginId == probePluginId);
+        if (plugin is null || string.IsNullOrWhiteSpace(plugin.InformationalVersion))
+            return probePluginId;
+        return $"{plugin.Name}@{plugin.InformationalVersion}";
+    }
+
+    private static string ProbeNameFromPluginId(string probePluginId)
+    {
+        var at = probePluginId.IndexOf('@');
+        return at > 0 ? probePluginId[..at] : probePluginId;
     }
 
     private static string FormatRelativeTime(DateTimeOffset timestamp)
