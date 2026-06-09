@@ -21,6 +21,10 @@
         <MudTextField @bind-Value="Model.ScheduleCron" Label="Schedule (Cron)" Required="true"
                       HelperText="e.g. */5 * * * * (every 5 minutes)" Class="mt-3" />
 
+        <MudTextField @bind-Value="Model.TargetAddressOverride" Label="Target Address Override" Class="mt-3"
+                      Placeholder="@(string.IsNullOrWhiteSpace(DefaultAddress) ? null : DefaultAddress)"
+                      HelperText="@(string.IsNullOrWhiteSpace(DefaultAddress) ? "Optional. Leave blank to use the host address." : $"Optional. Leave blank to use the host address ({DefaultAddress}).")" />
+
         @if (_selectedPlugin?.ConfigManifest?.Fields is { Count: > 0 } fields && fields.Any(f => !f.IsGlobal))
         {
             <div class="mt-3">
@@ -45,6 +49,7 @@
     [Parameter] public FormModel Model { get; set; } = new();
     [Parameter] public IReadOnlyList<LoadedPluginModel> Plugins { get; set; } = [];
     [Parameter] public bool IsEdit { get; set; }
+    [Parameter] public string? DefaultAddress { get; set; }
 
     private LoadedPluginModel? _selectedPlugin;
     private Dictionary<string, string> _configValues = new();
@@ -84,6 +89,9 @@
                 .ToDictionary(kv => kv.Key, kv => kv.Value);
             Model.ConfigJson = nonEmpty.Count > 0 ? JsonSerializer.Serialize(nonEmpty) : null;
         }
+        Model.TargetAddressOverride = string.IsNullOrWhiteSpace(Model.TargetAddressOverride)
+            ? null
+            : Model.TargetAddressOverride.Trim();
         MudDialog.Close(DialogResult.Ok(Model));
     }
 
@@ -130,6 +138,7 @@
         public string Name { get; set; } = "";
         public string ScheduleCron { get; set; } = "";
         public string? ConfigJson { get; set; }
+        public string? TargetAddressOverride { get; set; }
         public bool Enabled { get; set; } = true;
     }
 }

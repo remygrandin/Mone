@@ -452,7 +452,18 @@ else
                         @foreach (var probe in _effectiveProbes)
                         {
                             <tr>
-                                <td>@(ResolveProbeAssignmentName(probe.AssignmentId) ?? ProbeNameFromPluginId(probe.ProbePluginId))</td>
+                                <td>
+                                    @(ResolveProbeAssignmentName(probe.AssignmentId) ?? ProbeNameFromPluginId(probe.ProbePluginId))
+                                    @if (!string.IsNullOrWhiteSpace(probe.TargetAddressOverride))
+                                    {
+                                        <MudTooltip Text="@($"Target address override: {probe.TargetAddressOverride}")">
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Style="display:block;">
+                                                <MudIcon Icon="@Icons.Material.Filled.AltRoute" Size="Size.Small" Style="vertical-align:text-bottom;" />
+                                                @probe.TargetAddressOverride
+                                            </MudText>
+                                        </MudTooltip>
+                                    }
+                                </td>
                                 <td><code>@FullPluginLabel(probe.ProbePluginId)</code></td>
                                 <td><code>@probe.ScheduleCron</code></td>
                                 <td>
@@ -1225,12 +1236,14 @@ else
         {
             { x => x.Plugins, _loadedPlugins },
             { x => x.IsEdit, true },
+            { x => x.DefaultAddress, _host?.Address },
             { x => x.Model, new ProbeAssignmentDialog.FormModel
                 {
                     ProbePluginId = probe.ProbePluginId,
                     Name = ResolveProbeAssignmentName(probe.AssignmentId) ?? probe.ProbePluginId,
                     ScheduleCron = probe.ScheduleCron,
                     ConfigJson = probe.ConfigJson,
+                    TargetAddressOverride = probe.TargetAddressOverride,
                     Enabled = probe.Enabled
                 }
             }
@@ -1244,7 +1257,7 @@ else
             try
             {
                 await Api.UpdateProbeAssignmentAsync(Id, probe.AssignmentId,
-                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, null, model.Enabled));
+                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, model.TargetAddressOverride, model.Enabled));
                 Snackbar.Add("Probe assignment updated.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
@@ -1273,7 +1286,8 @@ else
     {
         var parameters = new DialogParameters<ProbeAssignmentDialog>
         {
-            { x => x.Plugins, _loadedPlugins }
+            { x => x.Plugins, _loadedPlugins },
+            { x => x.DefaultAddress, _host?.Address }
         };
         var dialog = await DialogService.ShowAsync<ProbeAssignmentDialog>("Add Probe Assignment", parameters,
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
@@ -1284,7 +1298,7 @@ else
             try
             {
                 await Api.CreateProbeAssignmentAsync(Id, new CreateProbeAssignmentRequest(
-                    model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, null, model.Enabled));
+                    model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, model.TargetAddressOverride, model.Enabled));
                 Snackbar.Add("Probe assignment created.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
