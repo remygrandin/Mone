@@ -76,17 +76,18 @@ services:
       context: ..
       dockerfile: Mone/src/Mone.ProbeExecutor/Dockerfile
     environment:
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
+      # Remote executor keeps no Postgres: config is pulled from the API and cached on the spool
+      # volume; results go out over NATS, spooling locally when NATS is unreachable.
       ConnectionStrings__Nats: nats://nats:4222
       ProbeExecutor__PluginDirectory: /app/plugins
       Mone__Api__BaseUrl: http://api:8080
       Mone__Node__Name: ${PROBE_NODE_NAME:-}
       Mone__Node__Token: ${MONE_NODE_TOKEN:-}
+      Mone__Node__SpoolPath: /app/data/spool.db
     volumes:
       - plugins:/app/plugins
+      - probe-spool:/app/data
     depends_on:
-      postgres:
-        condition: service_healthy
       nats:
         condition: service_healthy
       api:
@@ -158,3 +159,4 @@ volumes:
   pgdata:
   natsdata:
   plugins:
+  probe-spool:

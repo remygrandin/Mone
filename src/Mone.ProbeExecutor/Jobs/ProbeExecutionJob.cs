@@ -1,35 +1,32 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Mone.Contracts.Models;
 using Mone.Contracts.Plugins;
-using Mone.Infrastructure.Data;
-using Mone.Infrastructure.Data.Entities;
-using Mone.Messaging;
 using Mone.Messaging.Messages;
 using Mone.ProbeExecutor.Services;
-using NATS.Client.JetStream;
 using Quartz;
 
 namespace Mone.ProbeExecutor.Jobs;
 
 public sealed class ProbeExecutionJob(
     Mone.PluginEngine.PluginEngine pluginEngine,
-    MoneDbContext db,
-    INatsJSContext jetStream,
+    IResultSink resultSink,
     ILogger<ProbeExecutionJob> logger) : IJob
 {
     public async Task Execute(IJobExecutionContext context)
     {
         var probePluginId = context.MergedJobDataMap.GetString("ProbePluginId")!;
         var targetId = context.MergedJobDataMap.GetString("TargetId")!;
-        var assignmentId = context.MergedJobDataMap.GetString("AssignmentId")!;
         var targetAddressOverride = context.MergedJobDataMap.ContainsKey("TargetAddressOverride")
             ? context.MergedJobDataMap.GetString("TargetAddressOverride")
             : null;
         var hostAddress = context.MergedJobDataMap.ContainsKey("HostAddress")
             ? context.MergedJobDataMap.GetString("HostAddress")
             : null;
+        var nameSnakeCase = context.MergedJobDataMap.ContainsKey("NameSnakeCase")
+            ? context.MergedJobDataMap.GetString("NameSnakeCase")
+            : null;
+        var mergedConfig = ParseMergedConfig(context.MergedJobDataMap.GetString("MergedConfigJson"));
 
         logger.LogInformation("Executing probe {ProbeId} for target {TargetId}", probePluginId, targetId);
 
@@ -47,15 +44,6 @@ public sealed class ProbeExecutionJob(
             return;
         }
 
-        var assignment = await db.ProbeAssignments
-            .AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == Guid.Parse(assignmentId), context.CancellationToken);
-
-        var mergedConfig = await Mone.Infrastructure.Services.ConfigMerger.BuildMergedConfigAsync(
-            db, probePluginId, assignment?.ConfigJson, logger, context.CancellationToken);
-
-        var assignmentNameSnake = assignment?.NameSnakeCase;
-
         var pluginContext = new PluginContext(probePluginId, mergedConfig, context.CancellationToken);
         await probe.InitializeAsync(pluginContext);
 
@@ -72,7 +60,7 @@ public sealed class ProbeExecutionJob(
             var rawResult = await probe.ExecuteAsync(probeAddress, context.CancellationToken);
             sw.Stop();
 
-            var result = PrefixMetadataKeys(rawResult, assignmentNameSnake);
+            var result = PrefixMetadataKeys(rawResult, nameSnakeCase);
 
             logger.LogInformation(
                 "Probe {ProbeId} completed for target {TargetId}: {Status} in {DurationMs}ms",
@@ -82,39 +70,7 @@ public sealed class ProbeExecutionJob(
             var subject = $"probes.results.{probeType}.{targetId}";
             var message = new ProbeResultMessage(targetId, probePluginId, probeType, result);
 
-            try
-            {
-                await jetStream.PublishAsync(subject, message);
-                logger.LogDebug("Published probe result to NATS subject {Subject}", subject);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to publish probe result to NATS for {ProbeId}/{TargetId}",
-                    probePluginId, targetId);
-            }
-
-            var entity = new ProbeResultEntity
-            {
-                Timestamp = result.Timestamp,
-                TargetId = Guid.Parse(targetId),
-                ProbeId = probePluginId,
-                Status = result.Status,
-                Summary = result.Summary,
-                DurationMs = result.Duration.TotalMilliseconds,
-                MetadataJson = result.Metadata is not null ? JsonSerializer.Serialize(result.Metadata) : null
-            };
-
-            try
-            {
-                db.ProbeResults.Add(entity);
-                await db.SaveChangesAsync(context.CancellationToken);
-                logger.LogDebug("Stored probe result in database for {ProbeId}/{TargetId}", probePluginId, targetId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to store probe result in database for {ProbeId}/{TargetId}",
-                    probePluginId, targetId);
-            }
+            await resultSink.PublishAsync(subject, message, context.CancellationToken);
         }
         catch (Exception ex)
         {
@@ -123,6 +79,15 @@ public sealed class ProbeExecutionJob(
                 "Probe {ProbeId} execution failed for target {TargetId} after {DurationMs}ms",
                 probePluginId, targetId, sw.ElapsedMilliseconds);
         }
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseMergedConfig(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return new Dictionary<string, string>();
+
+        return JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+               ?? new Dictionary<string, string>();
     }
 
     // PerTarget plugins (e.g. Ping) carry per-assignment config in mutable instance fields.
@@ -135,17 +100,6 @@ public sealed class ProbeExecutionJob(
             return Activator.CreateInstance(registration.Plugin.GetType()) as IProbePlugin;
 
         return registration.Plugin as IProbePlugin;
-    }
-
-    internal async Task<IReadOnlyDictionary<string, string>> BuildMergedConfigAsync(
-        string probePluginId, string assignmentId, CancellationToken ct)
-    {
-        var assignment = await db.ProbeAssignments
-            .AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == Guid.Parse(assignmentId), ct);
-
-        return await Mone.Infrastructure.Services.ConfigMerger.BuildMergedConfigAsync(
-            db, probePluginId, assignment?.ConfigJson, logger, ct);
     }
 
     internal static ProbeResult PrefixMetadataKeys(ProbeResult result, string? nameSnakeCase)

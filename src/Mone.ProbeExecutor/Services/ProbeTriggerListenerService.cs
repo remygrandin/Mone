@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Mone.Messaging;
 using Mone.Messaging.Messages;
 using Mone.ProbeExecutor.Jobs;
@@ -10,6 +11,7 @@ namespace Mone.ProbeExecutor.Services;
 public sealed class ProbeTriggerListenerService(
     INatsJSContext jetStream,
     ISchedulerFactory schedulerFactory,
+    IProbeConfigSource configSource,
     ILogger<ProbeTriggerListenerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -46,19 +48,34 @@ public sealed class ProbeTriggerListenerService(
 
                 var scheduler = await schedulerFactory.GetScheduler(stoppingToken);
 
+                // Merged config + name come from the cached spec snapshot (no DB on the executor).
+                var cached = await configSource.GetCachedSpecsAsync(stoppingToken);
+                var spec = cached.FirstOrDefault(s => s.AssignmentId == trigger.AssignmentId);
+                if (spec is null)
+                    logger.LogWarning(
+                        "No cached spec for assignment {AssignmentId}; running manual trigger with default config",
+                        trigger.AssignmentId);
+
                 var job = JobBuilder.Create<ProbeExecutionJob>()
                     .WithIdentity($"manual-{Guid.NewGuid()}", "manual-triggers")
                     .UsingJobData("ProbePluginId", trigger.ProbePluginId)
                     .UsingJobData("TargetId", trigger.HostId.ToString())
                     .UsingJobData("AssignmentId", trigger.AssignmentId.ToString())
+                    .UsingJobData("MergedConfigJson",
+                        JsonSerializer.Serialize(spec?.MergedConfig ?? new Dictionary<string, string>()))
                     .StoreDurably(false)
                     .Build();
 
-                if (trigger.TargetAddressOverride is not null)
-                    job.JobDataMap.Put("TargetAddressOverride", trigger.TargetAddressOverride);
+                if (spec?.NameSnakeCase is not null)
+                    job.JobDataMap.Put("NameSnakeCase", spec.NameSnakeCase);
 
-                if (trigger.HostAddress is not null)
-                    job.JobDataMap.Put("HostAddress", trigger.HostAddress);
+                var targetAddressOverride = trigger.TargetAddressOverride ?? spec?.TargetAddressOverride;
+                if (targetAddressOverride is not null)
+                    job.JobDataMap.Put("TargetAddressOverride", targetAddressOverride);
+
+                var hostAddress = trigger.HostAddress ?? spec?.HostAddress;
+                if (hostAddress is not null)
+                    job.JobDataMap.Put("HostAddress", hostAddress);
 
                 var quartzTrigger = TriggerBuilder.Create()
                     .ForJob(job)

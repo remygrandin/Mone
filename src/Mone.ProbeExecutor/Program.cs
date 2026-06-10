@@ -1,25 +1,24 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Mone.Contracts.Models;
 using Mone.Contracts.Plugins;
-using Mone.Infrastructure.Data;
-using Mone.Infrastructure.Data.Entities;
 using Mone.Messaging.Extensions;
 using Mone.Messaging.Messages;
+using Mone.ProbeExecutor.Data;
 using Mone.ProbeExecutor.Jobs;
 using Mone.ProbeExecutor.Services;
-using NATS.Client.JetStream;
 using Quartz;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<MoneDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+// Remote executors keep no database: config is pulled from the console API and cached locally, and
+// results go out over NATS (spooled to local SQLite when NATS is unreachable). createStreams:false
+// means startup does not depend on NATS being up.
+builder.Services.AddSingleton<SpoolStore>();
 
 builder.Services.AddMoneMessaging(
-    builder.Configuration.GetConnectionString("Nats") ?? "nats://localhost:4222");
+    builder.Configuration.GetConnectionString("Nats") ?? "nats://localhost:4222",
+    createStreams: false);
 
 builder.Services.AddSingleton(sp =>
     new Mone.PluginEngine.PluginEngine(
@@ -32,12 +31,16 @@ builder.Services.AddQuartzHostedService(options =>
     options.WaitForJobsToComplete = true;
 });
 
-builder.Services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton(sp =>
     Mone.Infrastructure.Services.NodeIdentity.Resolve(
         sp.GetRequiredService<IConfiguration>(), Mone.Contracts.Models.ExecutorRole.Probe));
 builder.Services.AddHostedService<Mone.Infrastructure.Services.NodeRegistrationService>();
+
+builder.Services.AddSingleton<IProbeConfigSource, ApiProbeConfigSource>();
+builder.Services.AddSingleton<IResultSink, SpoolingResultSink>();
+builder.Services.AddHostedService<SpoolForwarderService>();
+
 builder.Services.AddTransient<ProbeExecutionJob>();
 builder.Services.AddSingleton<ProbeSchedulerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ProbeSchedulerService>());
@@ -52,8 +55,8 @@ app.MapPost("/api/webhooks/{targetId}", async (
     string targetId,
     HttpContext httpContext,
     Mone.PluginEngine.PluginEngine pluginEngine,
-    MoneDbContext db,
-    INatsJSContext jetStream,
+    IProbeConfigSource configSource,
+    IResultSink resultSink,
     ILogger<Program> logger) =>
 {
     logger.LogInformation("Webhook received for target {TargetId}, ContentLength={ContentLength}",
@@ -72,15 +75,16 @@ app.MapPost("/api/webhooks/{targetId}", async (
         return Results.NotFound(new { error = "No passive probe plugin registered" });
     }
 
-    var assignment = await db.ProbeAssignments
-        .FirstOrDefaultAsync(a => a.HostId == Guid.Parse(targetId) && a.Enabled);
-
+    // webhook_secret comes from the cached spec snapshot (the executor has no DB). Find a passive
+    // assignment for this host and read its merged config.
     string? webhookSecret = null;
-    if (assignment?.ConfigJson is not null)
+    if (Guid.TryParse(targetId, out var hostGuid))
     {
-        var config = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(assignment.ConfigJson);
-        if (config?.TryGetValue("webhook_secret", out var secretElement) == true)
-            webhookSecret = secretElement.GetString();
+        var specs = await configSource.GetCachedSpecsAsync(httpContext.RequestAborted);
+        var passiveIds = passivePlugins.Select(p => p.Metadata.PluginId).ToHashSet(StringComparer.Ordinal);
+        var spec = specs.FirstOrDefault(s => s.HostId == hostGuid && passiveIds.Contains(s.ProbePluginId));
+        if (spec is not null && spec.MergedConfig.TryGetValue("webhook_secret", out var secret))
+            webhookSecret = secret;
     }
 
     using var reader = new StreamReader(httpContext.Request.Body, Encoding.UTF8);
@@ -124,37 +128,7 @@ app.MapPost("/api/webhooks/{targetId}", async (
     var subject = $"probes.results.{probeType}.{targetId}";
     var message = new ProbeResultMessage(targetId, registration.Metadata.PluginId, probeType, result);
 
-    try
-    {
-        await jetStream.PublishAsync(subject, message);
-        logger.LogDebug("Published webhook probe result to NATS subject {Subject}", subject);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to publish webhook probe result to NATS for {TargetId}", targetId);
-    }
-
-    var entity = new ProbeResultEntity
-    {
-        Timestamp = result.Timestamp,
-        TargetId = Guid.Parse(targetId),
-        ProbeId = registration.Metadata.PluginId,
-        Status = result.Status,
-        Summary = result.Summary,
-        DurationMs = result.Duration.TotalMilliseconds,
-        MetadataJson = result.Metadata is not null ? JsonSerializer.Serialize(result.Metadata) : null
-    };
-
-    try
-    {
-        db.ProbeResults.Add(entity);
-        await db.SaveChangesAsync(httpContext.RequestAborted);
-        logger.LogDebug("Stored webhook probe result in database for {TargetId}", targetId);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Failed to store webhook probe result in database for {TargetId}", targetId);
-    }
+    await resultSink.PublishAsync(subject, message, httpContext.RequestAborted);
 
     logger.LogInformation("Webhook processed for target {TargetId}: {Status}, PayloadSizeBytes={PayloadSizeBytes}",
         targetId, result.Status, payload.Length);

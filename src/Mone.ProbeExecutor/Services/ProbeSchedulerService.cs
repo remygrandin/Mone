@@ -1,7 +1,4 @@
-using Microsoft.EntityFrameworkCore;
 using Mone.Contracts.Models;
-using Mone.Infrastructure.Data;
-using Mone.Infrastructure.Services;
 using Mone.ProbeExecutor.Jobs;
 using Quartz;
 using Quartz.Impl.Matchers;
@@ -11,9 +8,8 @@ namespace Mone.ProbeExecutor.Services;
 public sealed class ProbeSchedulerService(
     Mone.PluginEngine.PluginEngine pluginEngine,
     ISchedulerFactory schedulerFactory,
-    IServiceScopeFactory scopeFactory,
+    IProbeConfigSource configSource,
     IConfiguration configuration,
-    ResolvedNodeIdentity nodeIdentity,
     ILogger<ProbeSchedulerService> logger) : IHostedService
 {
     private const string ProbeGroup = "probes";
@@ -50,51 +46,38 @@ public sealed class ProbeSchedulerService(
     }
 
     /// <summary>
-    /// Reconciles the Quartz schedule against the current set of effective probe assignments:
-    /// schedules new probes, reschedules ones whose cron/target changed, and unschedules removed
-    /// ones. Safe to call concurrently — calls are serialized so the timer and NATS-driven
-    /// reconciles cannot interleave Quartz mutations.
+    /// Reconciles the Quartz schedule against the probe specs served by the console API (with local
+    /// cache fallback): schedules new probes, reschedules ones whose cron/target/config changed, and
+    /// unschedules removed ones. Safe to call concurrently — calls are serialized so the timer and
+    /// NATS-driven reconciles cannot interleave Quartz mutations.
     /// </summary>
     public async Task ReconcileAsync(CancellationToken cancellationToken)
     {
         await _reconcileLock.WaitAsync(cancellationToken);
         try
         {
-            using var scope = scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<MoneDbContext>();
-            var resolver = scope.ServiceProvider.GetRequiredService<InheritanceResolver>();
-
-            var hosts = await db.Hosts.ToListAsync(cancellationToken);
+            var specs = await configSource.GetProbeSpecsAsync(cancellationToken);
             var scheduler = await schedulerFactory.GetScheduler(cancellationToken);
 
             var desired = new Dictionary<JobKey, DesiredProbe>();
-            foreach (var host in hosts)
+            foreach (var spec in specs)
             {
-                var effectiveAssignments = await resolver.GetEffectiveProbeAssignmentsAsync(host.Id);
+                if (!spec.Enabled)
+                    continue;
 
-                foreach (var assignment in effectiveAssignments)
+                var plugin = pluginEngine.Registry.Get(spec.ProbePluginId);
+                if (plugin is null)
                 {
-                    if (!assignment.Enabled)
-                        continue;
-
-                    if (assignment.ExecutorNodeId is not null && assignment.ExecutorNodeId != nodeIdentity.Id)
-                        continue;
-
-                    var plugin = pluginEngine.Registry.Get(assignment.ProbePluginId);
-                    if (plugin is null)
-                    {
-                        logger.LogWarning("Probe plugin {ProbePluginId} not found, skipping assignment {AssignmentId}",
-                            assignment.ProbePluginId, assignment.AssignmentId);
-                        continue;
-                    }
-
-                    if (plugin.Metadata.ProbeMode == ProbeMode.Passive)
-                        continue;
-
-                    var jobKey = new JobKey($"probe-{assignment.AssignmentId}-{host.Id}", ProbeGroup);
-                    desired[jobKey] = new DesiredProbe(host.Id, host.Address, assignment,
-                        ComputeSignature(host.Address, assignment));
+                    logger.LogWarning("Probe plugin {ProbePluginId} not found, skipping assignment {AssignmentId}",
+                        spec.ProbePluginId, spec.AssignmentId);
+                    continue;
                 }
+
+                if (plugin.Metadata.ProbeMode == ProbeMode.Passive)
+                    continue;
+
+                var jobKey = new JobKey($"probe-{spec.AssignmentId}-{spec.HostId}", ProbeGroup);
+                desired[jobKey] = new DesiredProbe(spec, ComputeSignature(spec));
             }
 
             var existingKeys = await scheduler.GetJobKeys(GroupMatcher<JobKey>.GroupEquals(ProbeGroup), cancellationToken);
@@ -132,12 +115,9 @@ public sealed class ProbeSchedulerService(
                 if (existingDetail is null)
                 {
                     scheduled++;
-                    var sourceLabel = probe.Assignment.SourceType == AssignmentSourceType.Inherited
-                        ? $"inherited from group {probe.Assignment.SourceGroupId}"
-                        : "direct";
                     logger.LogInformation(
-                        "Scheduled probe {ProbePluginId} for host {HostId} with cron {Cron} ({Source})",
-                        probe.Assignment.ProbePluginId, probe.HostId, probe.Assignment.ScheduleCron, sourceLabel);
+                        "Scheduled probe {ProbePluginId} for host {HostId} with cron {Cron}",
+                        probe.Spec.ProbePluginId, probe.Spec.HostId, probe.Spec.ScheduleCron);
                 }
             }
 
@@ -180,42 +160,51 @@ public sealed class ProbeSchedulerService(
 
     private static (IJobDetail Job, ITrigger Trigger) BuildJobAndTrigger(JobKey jobKey, DesiredProbe probe)
     {
-        var assignment = probe.Assignment;
+        var spec = probe.Spec;
 
         var jobBuilder = JobBuilder.Create<ProbeExecutionJob>()
             .WithIdentity(jobKey)
-            .UsingJobData("ProbePluginId", assignment.ProbePluginId)
-            .UsingJobData("TargetId", probe.HostId.ToString())
-            .UsingJobData("HostAddress", probe.HostAddress)
-            .UsingJobData("AssignmentId", assignment.AssignmentId.ToString())
+            .UsingJobData("ProbePluginId", spec.ProbePluginId)
+            .UsingJobData("TargetId", spec.HostId.ToString())
+            .UsingJobData("HostAddress", spec.HostAddress)
+            .UsingJobData("AssignmentId", spec.AssignmentId.ToString())
+            .UsingJobData("MergedConfigJson", SerializeConfig(spec.MergedConfig))
             .UsingJobData("Signature", probe.Signature);
 
-        if (assignment.TargetAddressOverride is not null)
-            jobBuilder.UsingJobData("TargetAddressOverride", assignment.TargetAddressOverride);
+        if (spec.TargetAddressOverride is not null)
+            jobBuilder.UsingJobData("TargetAddressOverride", spec.TargetAddressOverride);
+
+        if (spec.NameSnakeCase is not null)
+            jobBuilder.UsingJobData("NameSnakeCase", spec.NameSnakeCase);
 
         var job = jobBuilder.Build();
 
         var trigger = TriggerBuilder.Create()
-            .WithIdentity($"trigger-{assignment.AssignmentId}-{probe.HostId}", ProbeGroup)
+            .WithIdentity($"trigger-{spec.AssignmentId}-{spec.HostId}", ProbeGroup)
             .ForJob(job)
-            .WithCronSchedule(ToQuartzCron(assignment.ScheduleCron))
+            .WithCronSchedule(ToQuartzCron(spec.ScheduleCron))
             .StartNow()
             .Build();
 
         return (job, trigger);
     }
 
+    private static string SerializeConfig(IReadOnlyDictionary<string, string> config) =>
+        System.Text.Json.JsonSerializer.Serialize(config);
+
     /// <summary>
     /// Identity of the scheduled job's inputs. When this changes, the job is torn down and
     /// recreated; when it matches, an existing job is left untouched so its next-fire time and
     /// trigger state survive the reconcile.
     /// </summary>
-    private static string ComputeSignature(string hostAddress, EffectiveProbeAssignment assignment) =>
+    private static string ComputeSignature(ProbeSpec spec) =>
         string.Join('|',
-            assignment.ProbePluginId,
-            assignment.ScheduleCron,
-            hostAddress,
-            assignment.TargetAddressOverride ?? "");
+            spec.ProbePluginId,
+            spec.ScheduleCron,
+            spec.HostAddress,
+            spec.TargetAddressOverride ?? "",
+            spec.NameSnakeCase ?? "",
+            SerializeConfig(spec.MergedConfig));
 
     /// <summary>
     /// Quartz.NET requires 6-7 field cron (sec min hour dom mon dow [year]).
@@ -240,9 +229,5 @@ public sealed class ProbeSchedulerService(
         return $"0 {parts[0]} {parts[1]} {dom} {parts[3]} {dow}";
     }
 
-    private sealed record DesiredProbe(
-        Guid HostId,
-        string HostAddress,
-        EffectiveProbeAssignment Assignment,
-        string Signature);
+    private sealed record DesiredProbe(ProbeSpec Spec, string Signature);
 }

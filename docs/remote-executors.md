@@ -10,20 +10,22 @@ how it identifies itself, and how you bind specific work to it.
 
 ## How a remote executor connects back
 
-A remote executor talks to the central deployment over three channels:
+A remote executor talks to the central deployment over these channels:
 
-| Channel | Direction | Purpose |
-|---------|-----------|---------|
-| **API** (HTTP) | executor → API | Self-registration and 30s heartbeat so the node shows up under **Settings → Nodes** with live health. |
-| **NATS JetStream** | bidirectional | Receives schedule/trigger messages and publishes probe results / status changes. |
-| **PostgreSQL** | executor → DB | Reads assignment config (which probes/checkers run, their settings) and writes results. |
+| Channel | Direction | Probe | Checker | Purpose |
+|---------|-----------|:-----:|:-------:|---------|
+| **API** (HTTP) | executor → API | ✓ | ✓ | Self-registration and 30s heartbeat so the node shows up under **Settings → Nodes** with live health. The probe executor also pulls its assignment config here. |
+| **NATS JetStream** | bidirectional | ✓ | ✓ | Receives schedule/trigger messages and publishes probe results / status changes. |
+| **PostgreSQL** | executor → DB | — | ✓ | Reads assignment config and writes results. **Checker engine only** — the probe executor no longer touches Postgres. |
 
-> **Current requirement:** remote executors still connect directly to Postgres
-> for configuration and result storage. Make sure Postgres is reachable from the
-> remote host (and firewalled appropriately). The semi-autonomous executor work
-> (config over the API, results buffered locally and forwarded over NATS) will
-> remove the direct Postgres dependency — until then, plan network access for
-> all three channels.
+> **Semi-autonomous probe executor:** the probe executor needs **no Postgres**.
+> It pulls fully-resolved probe specs from the API (`/api/executor-nodes/{id}/probe-assignments`)
+> and caches them on its spool volume, so it keeps running on last-known config
+> when the API is down. Results publish over NATS; when NATS is unreachable they
+> are written to a local SQLite spool and forwarded once it recovers — a row is
+> deleted locally only after a confirmed publish, so nothing is lost. The console
+> persists those results to Postgres. The **checker engine still connects directly
+> to Postgres** — plan network access accordingly.
 
 ## Node identity
 
@@ -45,20 +47,22 @@ the same host, give them distinct names — they register as separate nodes
 
 | Variable | Service | Required | Description |
 |----------|---------|----------|-------------|
-| `ConnectionStrings__Postgres` | both | yes | PostgreSQL/TimescaleDB connection string, reachable from the remote host. |
+| `ConnectionStrings__Postgres` | checker | yes | PostgreSQL/TimescaleDB connection string, reachable from the remote host. **Checker only** — the probe executor does not use Postgres. |
 | `ConnectionStrings__Nats` | both | yes | NATS server URL, e.g. `nats://console.example.com:4222`. |
-| `Mone__Api__BaseUrl` | both | yes¹ | Base URL of the API, e.g. `https://console.example.com`. Without it, registration/heartbeat are disabled (the executor still runs but never appears under Nodes). |
-| `Mone__Node__Token` | both | recommended | Shared secret sent as the `X-Node-Token` header on register/heartbeat. Must match the API's `Mone__Node__Token`. If unset on the API, node routes are open. |
+| `Mone__Api__BaseUrl` | both | yes¹ | Base URL of the API, e.g. `https://console.example.com`. The probe executor pulls its config here; without it, registration/heartbeat are also disabled (the executor still runs on cached config but never appears under Nodes). |
+| `Mone__Node__Token` | both | recommended | Shared secret sent as the `X-Node-Token` header on register/heartbeat and the config pull. Must match the API's `Mone__Node__Token`. If unset on the API, node routes are open. |
 | `Mone__Node__Name` | both | recommended | Friendly node name shown in the dashboard. |
 | `Mone__Node__Id` | both | optional | Override the node GUID. Leave unset to use the stable per-machine default. |
 | `Mone__Node__Address` | both | optional | Advertised IP/hostname shown in the Nodes page (informational; does not affect connectivity). |
+| `Mone__Node__SpoolPath` | probe | optional | Path to the probe executor's local SQLite spool (cached config + unforwarded results). Default `/app/data/spool.db`; mount a persistent volume there so the cache and any buffered results survive restarts. |
 | `ProbeExecutor__PluginDirectory` | probe | yes | Path to probe plugin DLLs (default `/app/plugins`). |
 | `CheckerEngine__PluginDirectory` | checker | yes | Path to checker plugin DLLs (default `plugins`). |
 
-¹ Technically optional — the executor will still run and process work without
-it — but without `Mone__Api__BaseUrl` the node never registers, so you lose
-health visibility and cannot bind assignments to it. Always set it for remote
-nodes.
+¹ Technically optional — the executor process still starts without it — but the
+probe executor pulls its assignment config from the API, so without
+`Mone__Api__BaseUrl` it has only its cached snapshot to work from (nothing at all
+on a first run). The node also never registers, so you lose health visibility and
+cannot bind assignments to it. Always set it for remote nodes.
 
 > Config keys use `:` internally (`Mone:Node:Name`); as environment variables
 > the separator is `__` (double underscore): `Mone__Node__Name`.
@@ -105,8 +109,8 @@ dropdown). If a bound node is later deleted, its assignments revert to unbound
 ## Example: docker-compose on the remote host
 
 Run just a probe executor on a separate host, pointing back at the central
-console. Create a `.env` next to this file with `MONE_NODE_TOKEN`,
-`PROBE_NODE_NAME`, and `POSTGRES_PASSWORD`, then:
+console. The probe executor needs no Postgres — create a `.env` next to this file
+with `MONE_NODE_TOKEN` and `PROBE_NODE_NAME`, then:
 
 ```yaml
 # remote-probe.compose.yml
@@ -114,17 +118,21 @@ services:
   probe-executor:
     image: mone/probe-executor:latest   # or build from src/Mone.ProbeExecutor/Dockerfile
     environment:
-      ConnectionStrings__Postgres: Host=console.example.com;Port=5432;Database=mone;Username=mone;Password=${POSTGRES_PASSWORD}
       ConnectionStrings__Nats: nats://console.example.com:4222
       Mone__Api__BaseUrl: https://console.example.com
       Mone__Node__Token: ${MONE_NODE_TOKEN}
       Mone__Node__Name: ${PROBE_NODE_NAME:-edge01-probe}
+      Mone__Node__SpoolPath: /app/data/spool.db
       ProbeExecutor__PluginDirectory: /app/plugins
     volumes:
       - ./plugins:/app/plugins
+      - probe-spool:/app/data    # persists cached config + unforwarded results
     cap_add:
       - NET_RAW          # required for ICMP ping
     restart: unless-stopped
+
+volumes:
+  probe-spool:
 ```
 
 ```bash
@@ -146,11 +154,11 @@ Wants=network-online.target
 [Service]
 ExecStart=/opt/mone/probe-executor/Mone.ProbeExecutor
 WorkingDirectory=/opt/mone/probe-executor
-Environment=ConnectionStrings__Postgres=Host=console.example.com;Port=5432;Database=mone;Username=mone;Password=CHANGEME
 Environment=ConnectionStrings__Nats=nats://console.example.com:4222
 Environment=Mone__Api__BaseUrl=https://console.example.com
 Environment=Mone__Node__Token=CHANGEME
 Environment=Mone__Node__Name=edge01-probe
+Environment=Mone__Node__SpoolPath=/var/lib/mone/probe-spool.db
 Environment=ProbeExecutor__PluginDirectory=/opt/mone/probe-executor/plugins
 Restart=always
 RestartSec=5
@@ -159,8 +167,12 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Prefer an `EnvironmentFile=` (mode `600`) over inline `Environment=` lines so
-the Postgres password and node token are not world-readable in the unit file.
+The probe executor needs no Postgres; point `Mone__Node__SpoolPath` at a
+persistent, writable path (e.g. under `/var/lib/mone`) so cached config and
+buffered results survive restarts. Prefer an `EnvironmentFile=` (mode `600`)
+over inline `Environment=` lines so the node token is not world-readable in the
+unit file. (A remote **checker engine** unit still needs
+`ConnectionStrings__Postgres`.)
 
 ## Verifying the deployment
 
@@ -179,5 +191,6 @@ the Postgres password and node token are not world-readable in the unit file.
 | Node never appears under Nodes | `Mone__Api__BaseUrl` unset or unreachable; check executor logs for the "registration disabled" / "registration failed" warning. |
 | Node appears then goes Offline | Heartbeat can't reach the API (network/firewall), or `Mone__Node__Token` mismatch causing `401`. |
 | Registration logs `401` | Token mismatch between API and executor `Mone__Node__Token`. |
-| Bound assignment never runs | Plugin DLL missing on the remote host, or NATS/Postgres unreachable from it. |
+| Bound assignment never runs | Plugin DLL missing on the remote host; or (probe) the API was never reachable so no config was ever cached; or (checker) NATS/Postgres unreachable from it. |
+| Probe results delayed then arrive in a burst | NATS was unreachable, so results were spooled locally and forwarded once it recovered — expected store-and-forward behaviour. Check the executor logs for "spooling result locally" / "Forwarded N spooled result(s)". |
 | Two nodes for one host | A probe executor and checker engine on the same machine register separately by design — give them distinct `Mone__Node__Name` values. |

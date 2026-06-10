@@ -65,6 +65,8 @@ builder.Services.AddOpenApi();
 builder.Services.AddMoneMessaging(
     builder.Configuration.GetConnectionString("Nats") ?? "nats://localhost:4222");
 
+builder.Services.AddHostedService<ProbeResultPersistenceService>();
+
 builder.Services.AddHttpClient("GitHub", client =>
 {
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mone/1.0");

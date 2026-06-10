@@ -3,6 +3,7 @@ using Mone.Api.Models;
 using Mone.Contracts.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
+using Mone.Infrastructure.Services;
 
 namespace Mone.Api.Endpoints;
 
@@ -76,6 +77,57 @@ public static class ExecutorNodeEndpoints
 
             await db.SaveChangesAsync();
             return Results.NoContent();
+        });
+
+        // Config pull for remote executors: returns fully-resolved probe specs (inheritance +
+        // override + global config merge done here) so the executor needs neither the resolver
+        // nor a database. Returns assignments that are unbound (run everywhere) or bound to {id}.
+        nodes.MapGet("/{id:guid}/probe-assignments", async (
+            Guid id,
+            HttpContext http,
+            MoneDbContext db,
+            InheritanceResolver resolver,
+            ILoggerFactory loggerFactory,
+            IConfiguration config) =>
+        {
+            if (!IsNodeTokenValid(http, config))
+                return Results.Unauthorized();
+
+            var logger = loggerFactory.CreateLogger("ExecutorNodeProbeAssignments");
+
+            var nameByAssignment = await db.ProbeAssignments
+                .AsNoTracking()
+                .Select(a => new { a.Id, a.NameSnakeCase })
+                .ToDictionaryAsync(a => a.Id, a => a.NameSnakeCase);
+
+            var hosts = await db.Hosts.AsNoTracking().ToListAsync();
+            var specs = new List<ProbeSpec>();
+
+            foreach (var host in hosts)
+            {
+                var effective = await resolver.GetEffectiveProbeAssignmentsAsync(host.Id);
+                foreach (var a in effective)
+                {
+                    if (!a.Enabled)
+                        continue;
+                    if (a.ExecutorNodeId is not null && a.ExecutorNodeId != id)
+                        continue;
+
+                    // Passive probes are included intentionally: the executor's scheduler skips them
+                    // (results arrive via webhook, not the schedule), but the webhook handler needs
+                    // their merged config (e.g. webhook_secret) from this same cached snapshot.
+                    var merged = await ConfigMerger.BuildMergedConfigAsync(
+                        db, a.ProbePluginId, a.ConfigJson, logger, http.RequestAborted);
+
+                    nameByAssignment.TryGetValue(a.AssignmentId, out var nameSnake);
+
+                    specs.Add(new ProbeSpec(
+                        host.Id, host.Address, a.AssignmentId, a.ProbePluginId, a.ScheduleCron,
+                        merged, a.TargetAddressOverride, nameSnake, a.ExecutorNodeId, a.Enabled));
+                }
+            }
+
+            return Results.Ok(specs);
         });
 
         // Browser-facing routes: require user auth.
