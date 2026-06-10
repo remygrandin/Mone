@@ -85,6 +85,14 @@ All configuration is via environment variables. The defaults in `docker-compose.
 
 For the Email notification plugin, configure SMTP via checker/alert assignment config in the dashboard.
 
+### Remote executors
+
+You can run additional Probe Executors or Checker Engines on separate hosts and
+bind specific assignments to them. See
+[docs/remote-executors.md](docs/remote-executors.md) for node identity,
+connection environment variables, the shared-token security model, and
+docker-compose / systemd examples.
+
 ## API Documentation
 
 Interactive API docs are available at [http://localhost:8080/scalar/v1](http://localhost:8080/scalar/v1) when the API is running.
