@@ -4,4 +4,5 @@ public sealed record CreateCheckerAssignmentRequest(
     string CheckerPluginId,
     string Name,
     string? ConfigJson = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    Guid? ExecutorNodeId = null);

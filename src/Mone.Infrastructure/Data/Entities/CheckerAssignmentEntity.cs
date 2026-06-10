@@ -16,4 +16,6 @@ public sealed class CheckerAssignmentEntity
     public required string Name { get; set; }
     [MaxLength(128)]
     public required string NameSnakeCase { get; set; }
+    public Guid? ExecutorNodeId { get; set; }
+    public ExecutorNodeEntity? ExecutorNode { get; set; }
 }

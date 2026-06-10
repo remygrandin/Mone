@@ -19,7 +19,7 @@ public static class CheckerAssignmentEndpoints
 
             var assignments = await db.CheckerAssignments
                 .Where(c => c.HostId == hostId)
-                .Select(c => new CheckerAssignmentResponse(c.Id, c.HostId, c.GroupId, c.CheckerPluginId, c.Name, c.NameSnakeCase, c.ConfigJson, c.Enabled))
+                .Select(c => new CheckerAssignmentResponse(c.Id, c.HostId, c.GroupId, c.CheckerPluginId, c.Name, c.NameSnakeCase, c.ConfigJson, c.Enabled, c.ExecutorNodeId))
                 .ToListAsync();
 
             return Results.Ok(assignments);
@@ -42,13 +42,14 @@ public static class CheckerAssignmentEndpoints
                 Name = nameCheck.Name,
                 NameSnakeCase = nameCheck.SnakeCase,
                 ConfigJson = request.ConfigJson,
-                Enabled = request.Enabled
+                Enabled = request.Enabled,
+                ExecutorNodeId = request.ExecutorNodeId
             };
 
             db.CheckerAssignments.Add(assignment);
             await db.SaveChangesAsync(ct);
 
-            var response = new CheckerAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.CheckerPluginId, assignment.Name, assignment.NameSnakeCase, assignment.ConfigJson, assignment.Enabled);
+            var response = new CheckerAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.CheckerPluginId, assignment.Name, assignment.NameSnakeCase, assignment.ConfigJson, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Created($"/api/hosts/{hostId}/checkers/{assignment.Id}", response);
         });
 
@@ -68,10 +69,11 @@ public static class CheckerAssignmentEndpoints
             assignment.NameSnakeCase = nameCheck.SnakeCase;
             assignment.ConfigJson = request.ConfigJson;
             assignment.Enabled = request.Enabled;
+            assignment.ExecutorNodeId = request.ExecutorNodeId;
 
             await db.SaveChangesAsync(ct);
 
-            var response = new CheckerAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.CheckerPluginId, assignment.Name, assignment.NameSnakeCase, assignment.ConfigJson, assignment.Enabled);
+            var response = new CheckerAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.CheckerPluginId, assignment.Name, assignment.NameSnakeCase, assignment.ConfigJson, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Ok(response);
         });
 

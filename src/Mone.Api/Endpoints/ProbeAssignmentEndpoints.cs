@@ -20,7 +20,7 @@ public static class ProbeAssignmentEndpoints
 
             var assignments = await db.ProbeAssignments
                 .Where(p => p.HostId == hostId)
-                .Select(p => new ProbeAssignmentResponse(p.Id, p.HostId, p.GroupId, p.ProbePluginId, p.Name, p.NameSnakeCase, p.ScheduleCron, p.ConfigJson, p.TargetAddressOverride, p.Enabled))
+                .Select(p => new ProbeAssignmentResponse(p.Id, p.HostId, p.GroupId, p.ProbePluginId, p.Name, p.NameSnakeCase, p.ScheduleCron, p.ConfigJson, p.TargetAddressOverride, p.Enabled, p.ExecutorNodeId))
                 .ToListAsync();
 
             return Results.Ok(assignments);
@@ -53,7 +53,8 @@ public static class ProbeAssignmentEndpoints
                 ScheduleCron = request.ScheduleCron,
                 ConfigJson = request.ConfigJson,
                 TargetAddressOverride = request.TargetAddressOverride,
-                Enabled = request.Enabled
+                Enabled = request.Enabled,
+                ExecutorNodeId = request.ExecutorNodeId
             };
 
             db.ProbeAssignments.Add(assignment);
@@ -63,7 +64,7 @@ public static class ProbeAssignmentEndpoints
 
             await ProbeScheduleNotifier.NotifyChangedAsync(jetStream, "created", assignment.Id, logger, ct);
 
-            var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled);
+            var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Created($"/api/hosts/{hostId}/probes/{assignment.Id}", response);
         });
 
@@ -94,6 +95,7 @@ public static class ProbeAssignmentEndpoints
             assignment.ConfigJson = request.ConfigJson;
             assignment.TargetAddressOverride = request.TargetAddressOverride;
             assignment.Enabled = request.Enabled;
+            assignment.ExecutorNodeId = request.ExecutorNodeId;
 
             await db.SaveChangesAsync(ct);
 
@@ -101,7 +103,7 @@ public static class ProbeAssignmentEndpoints
 
             await ProbeScheduleNotifier.NotifyChangedAsync(jetStream, "updated", assignment.Id, logger, ct);
 
-            var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled);
+            var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Ok(response);
         });
 

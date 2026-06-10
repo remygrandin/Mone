@@ -33,6 +33,11 @@ builder.Services.AddQuartzHostedService(options =>
 });
 
 builder.Services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton(sp =>
+    Mone.Infrastructure.Services.NodeIdentity.Resolve(
+        sp.GetRequiredService<IConfiguration>(), Mone.Contracts.Models.ExecutorRole.Probe));
+builder.Services.AddHostedService<Mone.Infrastructure.Services.NodeRegistrationService>();
 builder.Services.AddTransient<ProbeExecutionJob>();
 builder.Services.AddSingleton<ProbeSchedulerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ProbeSchedulerService>());

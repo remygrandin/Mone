@@ -10,4 +10,5 @@ public sealed record ProbeAssignmentResponse(
     string ScheduleCron,
     string? ConfigJson,
     string? TargetAddressOverride,
-    bool Enabled);
+    bool Enabled,
+    Guid? ExecutorNodeId = null);

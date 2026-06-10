@@ -6,4 +6,5 @@ public sealed record CreateProbeAssignmentRequest(
     string ScheduleCron,
     string? ConfigJson = null,
     string? TargetAddressOverride = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    Guid? ExecutorNodeId = null);

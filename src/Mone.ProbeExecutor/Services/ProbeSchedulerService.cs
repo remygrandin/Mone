@@ -13,6 +13,7 @@ public sealed class ProbeSchedulerService(
     ISchedulerFactory schedulerFactory,
     IServiceScopeFactory scopeFactory,
     IConfiguration configuration,
+    ResolvedNodeIdentity nodeIdentity,
     ILogger<ProbeSchedulerService> logger) : IHostedService
 {
     private const string ProbeGroup = "probes";
@@ -74,6 +75,9 @@ public sealed class ProbeSchedulerService(
                 foreach (var assignment in effectiveAssignments)
                 {
                     if (!assignment.Enabled)
+                        continue;
+
+                    if (assignment.ExecutorNodeId is not null && assignment.ExecutorNodeId != nodeIdentity.Id)
                         continue;
 
                     var plugin = pluginEngine.Registry.Get(assignment.ProbePluginId);

@@ -1,0 +1,163 @@
+@page "/nodes"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Nodes - Mone</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Executor Nodes</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Probe executors and checker engines that have registered with the API, with their reported address and live health.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+}
+else if (_nodes.Length == 0)
+{
+    <MudPaper Class="pa-4 mb-4 d-flex flex-column align-center">
+        <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Large" Class="mud-text-secondary mb-2" />
+        <MudText Typo="Typo.body1" Class="mud-text-secondary">No executor nodes have registered yet</MudText>
+    </MudPaper>
+}
+else
+{
+    <MudDataGrid Items="_nodes" Hover="true" Dense="true" T="ExecutorNodeResponse">
+        <Columns>
+            <PropertyColumn Property="x => x.Name" Title="Name" />
+            <PropertyColumn Property="x => x.Hostname" Title="Hostname" />
+            <PropertyColumn Property="x => x.Address" Title="Address" />
+            <TemplateColumn Title="Role">
+                <CellTemplate>
+                    @foreach (var role in context.Item.Roles)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="mr-1">@role</MudChip>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="x => x.Version" Title="Version" />
+            <TemplateColumn Title="Last heartbeat">
+                <CellTemplate>
+                    <MudText Typo="Typo.body2">@RelativeHeartbeat(context.Item.LastHeartbeatAt)</MudText>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Health">
+                <CellTemplate>
+                    <MudChip T="string" Size="Size.Small" Color="@HealthColor(context.Item.Health)">@context.Item.Health</MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Actions">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   OnClick="@(() => OpenRenameDialog(context.Item))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => ConfirmDelete(context.Item))" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private ExecutorNodeResponse[] _nodes = [];
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNodesAsync();
+        _refreshTimer = new Timer(async void (_) =>
+        {
+            await LoadNodesAsync();
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private async Task LoadNodesAsync()
+    {
+        try
+        {
+            _nodes = await Api.GetExecutorNodesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load nodes: {ex.Message}", Severity.Error);
+        }
+
+        _loading = false;
+    }
+
+    private static Color HealthColor(string health) => health switch
+    {
+        "Online" => Color.Success,
+        "Stale" => Color.Warning,
+        _ => Color.Error
+    };
+
+    private static string RelativeHeartbeat(DateTimeOffset? last)
+    {
+        if (last is null) return "never";
+        var age = DateTimeOffset.UtcNow - last.Value;
+        if (age < TimeSpan.FromSeconds(60)) return $"{(int)age.TotalSeconds}s ago";
+        if (age < TimeSpan.FromMinutes(60)) return $"{(int)age.TotalMinutes}m ago";
+        if (age < TimeSpan.FromHours(24)) return $"{(int)age.TotalHours}h ago";
+        return last.Value.ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private async Task OpenRenameDialog(ExecutorNodeResponse node)
+    {
+        var parameters = new DialogParameters<RenameNodeDialog>
+        {
+            { x => x.Name, node.Name }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<RenameNodeDialog>("Rename Node", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false, Data: string newName } && !string.IsNullOrWhiteSpace(newName))
+        {
+            try
+            {
+                await Api.RenameExecutorNodeAsync(node.Id, new RenameExecutorNodeRequest(newName.Trim()));
+                Snackbar.Add("Node renamed", Severity.Success);
+                await LoadNodesAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to rename: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ConfirmDelete(ExecutorNodeResponse node)
+    {
+        var parameters = new DialogParameters<MudMessageBox>
+        {
+            { x => x.MarkupMessage, new MarkupString($"Delete node <b>{node.Name}</b>? Assignments bound to it will become unbound (run everywhere).") },
+            { x => x.YesText, "Delete" },
+            { x => x.NoText, "Cancel" }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall };
+        var dialog = await DialogService.ShowAsync<MudMessageBox>("Confirm Delete", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            try
+            {
+                await Api.DeleteExecutorNodeAsync(node.Id);
+                Snackbar.Add("Node deleted", Severity.Success);
+                await LoadNodesAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    public void Dispose() => _refreshTimer?.Dispose();
+}

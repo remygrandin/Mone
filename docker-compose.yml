@@ -79,6 +79,9 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
       ConnectionStrings__Nats: nats://nats:4222
       ProbeExecutor__PluginDirectory: /app/plugins
+      Mone__Api__BaseUrl: http://api:8080
+      Mone__Node__Name: ${PROBE_NODE_NAME:-}
+      Mone__Node__Token: ${MONE_NODE_TOKEN:-}
     volumes:
       - plugins:/app/plugins
     depends_on:
@@ -108,6 +111,9 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
       ConnectionStrings__Nats: nats://nats:4222
       CheckerEngine__PluginDirectory: /app/plugins
+      Mone__Api__BaseUrl: http://api:8080
+      Mone__Node__Name: ${CHECKER_NODE_NAME:-}
+      Mone__Node__Token: ${MONE_NODE_TOKEN:-}
     volumes:
       - plugins:/app/plugins
     depends_on:

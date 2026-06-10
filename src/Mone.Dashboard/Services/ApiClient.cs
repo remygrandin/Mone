@@ -112,6 +112,15 @@ public sealed class ApiClient
     public async Task DeleteNotificationConfigAsync(Guid id) =>
         await DeleteAsync("api/notifications/configs/" + id);
 
+    public async Task<ExecutorNodeResponse[]> GetExecutorNodesAsync() =>
+        await GetAsync<ExecutorNodeResponse[]>("api/executor-nodes") ?? [];
+
+    public async Task RenameExecutorNodeAsync(Guid id, RenameExecutorNodeRequest request) =>
+        await PutAsync($"api/executor-nodes/{id}", request);
+
+    public async Task DeleteExecutorNodeAsync(Guid id) =>
+        await DeleteAsync($"api/executor-nodes/{id}");
+
     private async Task<T?> GetAsync<T>(string url)
     {
         var response = await _http.GetAsync(url);

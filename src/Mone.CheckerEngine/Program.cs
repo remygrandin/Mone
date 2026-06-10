@@ -16,6 +16,11 @@ builder.Services.AddSingleton(sp =>
         sp.GetRequiredService<ILogger<Mone.PluginEngine.PluginEngine>>(), enableHotReload: false));
 
 builder.Services.AddScoped<Mone.Infrastructure.Services.InheritanceResolver>();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton(sp =>
+    Mone.Infrastructure.Services.NodeIdentity.Resolve(
+        sp.GetRequiredService<IConfiguration>(), Mone.Contracts.Models.ExecutorRole.Checker));
+builder.Services.AddHostedService<Mone.Infrastructure.Services.NodeRegistrationService>();
 builder.Services.AddSingleton<StatusTracker>();
 builder.Services.AddSingleton<CheckerDispatcher>();
 builder.Services.AddHostedService<StreamCheckerService>();

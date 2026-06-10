@@ -6,7 +6,8 @@ public sealed record CreateProbeAssignmentRequest(
     string ScheduleCron,
     string? ConfigJson = null,
     string? TargetAddressOverride = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    Guid? ExecutorNodeId = null);
 
 public sealed record UpdateProbeAssignmentRequest(
     string ProbePluginId,
@@ -14,6 +15,7 @@ public sealed record UpdateProbeAssignmentRequest(
     string ScheduleCron,
     string? ConfigJson = null,
     string? TargetAddressOverride = null,
-    bool Enabled = true);
+    bool Enabled = true,
+    Guid? ExecutorNodeId = null);
 
 public sealed record TriggerProbeRequest(string ProbePluginId);

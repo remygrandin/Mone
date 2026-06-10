@@ -12,6 +12,7 @@ public sealed class IntervalCheckerScheduler(
     IServiceScopeFactory scopeFactory,
     Mone.PluginEngine.PluginEngine pluginEngine,
     CheckerDispatcher dispatcher,
+    ResolvedNodeIdentity nodeIdentity,
     ILogger<IntervalCheckerScheduler> logger) : BackgroundService
 {
     private static readonly TimeSpan TickPeriod = TimeSpan.FromSeconds(15);
@@ -64,6 +65,9 @@ public sealed class IntervalCheckerScheduler(
             foreach (var assignment in effectiveAssignments)
             {
                 if (!assignment.Enabled)
+                    continue;
+
+                if (assignment.ExecutorNodeId is not null && assignment.ExecutorNodeId != nodeIdentity.Id)
                     continue;
 
                 var registration = pluginEngine.Registry.Get(assignment.CheckerPluginId);

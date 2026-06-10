@@ -21,6 +21,7 @@ public sealed record EffectiveProbeAssignment(
     string? TargetAddressOverride,
     AssignmentSourceType SourceType,
     Guid? SourceGroupId,
+    Guid? ExecutorNodeId = null,
     bool IsOverridden = false,
     string? OverrideConfigJson = null);
 
@@ -31,6 +32,7 @@ public sealed record EffectiveCheckerAssignment(
     bool Enabled,
     AssignmentSourceType SourceType,
     Guid? SourceGroupId,
+    Guid? ExecutorNodeId = null,
     bool IsOverridden = false,
     string? OverrideConfigJson = null);
 
@@ -58,7 +60,7 @@ public sealed class InheritanceResolver
             result.Add(new EffectiveProbeAssignment(
                 a.Id, a.ProbePluginId, a.ScheduleCron, a.ConfigJson,
                 a.BackoffOverrideJson, a.Enabled, a.TargetAddressOverride,
-                AssignmentSourceType.Direct, null));
+                AssignmentSourceType.Direct, null, a.ExecutorNodeId));
         }
 
         _logger.LogDebug("Host {HostId}: {Count} direct probe assignments", hostId, direct.Count);
@@ -76,7 +78,7 @@ public sealed class InheritanceResolver
                 result.Add(new EffectiveProbeAssignment(
                     a.Id, a.ProbePluginId, a.ScheduleCron, a.ConfigJson,
                     a.BackoffOverrideJson, a.Enabled, a.TargetAddressOverride,
-                    AssignmentSourceType.Inherited, groupId));
+                    AssignmentSourceType.Inherited, groupId, a.ExecutorNodeId));
             }
 
             _logger.LogDebug("Host {HostId}: {Count} probe assignments inherited from group {GroupId}",
@@ -100,7 +102,7 @@ public sealed class InheritanceResolver
         {
             result.Add(new EffectiveCheckerAssignment(
                 a.Id, a.CheckerPluginId, a.ConfigJson, a.Enabled,
-                AssignmentSourceType.Direct, null));
+                AssignmentSourceType.Direct, null, a.ExecutorNodeId));
         }
 
         _logger.LogDebug("Host {HostId}: {Count} direct checker assignments", hostId, direct.Count);
@@ -117,7 +119,7 @@ public sealed class InheritanceResolver
             {
                 result.Add(new EffectiveCheckerAssignment(
                     a.Id, a.CheckerPluginId, a.ConfigJson, a.Enabled,
-                    AssignmentSourceType.Inherited, groupId));
+                    AssignmentSourceType.Inherited, groupId, a.ExecutorNodeId));
             }
 
             _logger.LogDebug("Host {HostId}: {Count} checker assignments inherited from group {GroupId}",

@@ -33,6 +33,16 @@
             </div>
         }
 
+        <MudSelect T="Guid?" Label="Run on node" Value="Model.ExecutorNodeId" ValueChanged="@(v => Model.ExecutorNodeId = v)"
+                   Clearable="true" Class="mt-3"
+                   HelperText="Leave empty to run on every probe executor. Bind to pin this probe to a single node.">
+            <MudSelectItem T="Guid?" Value="@((Guid?)null)">Any node</MudSelectItem>
+            @foreach (var node in ProbeNodes())
+            {
+                <MudSelectItem T="Guid?" Value="@node.Id">@node.Name</MudSelectItem>
+            }
+        </MudSelect>
+
         <MudSwitch @bind-Value="Model.Enabled" Label="Enabled" Color="Color.Primary" Class="mt-3" />
     </DialogContent>
     <DialogActions>
@@ -50,6 +60,10 @@
     [Parameter] public IReadOnlyList<LoadedPluginModel> Plugins { get; set; } = [];
     [Parameter] public bool IsEdit { get; set; }
     [Parameter] public string? DefaultAddress { get; set; }
+    [Parameter] public IReadOnlyList<ExecutorNodeResponse> Nodes { get; set; } = [];
+
+    private IEnumerable<ExecutorNodeResponse> ProbeNodes() =>
+        Nodes.Where(n => n.Roles.Contains("Probe", StringComparer.OrdinalIgnoreCase));
 
     private LoadedPluginModel? _selectedPlugin;
     private Dictionary<string, string> _configValues = new();
@@ -140,5 +154,6 @@
         public string? ConfigJson { get; set; }
         public string? TargetAddressOverride { get; set; }
         public bool Enabled { get; set; } = true;
+        public Guid? ExecutorNodeId { get; set; }
     }
 }

@@ -642,6 +642,7 @@ else
     private OverrideResponse[] _probeOverrides = [];
     private OverrideResponse[] _checkerOverrides = [];
     private LoadedPluginModel[] _loadedPlugins = [];
+    private ExecutorNodeResponse[] _executorNodes = [];
     private Dictionary<Guid, string> _groupNames = new();
     private Dictionary<string, MonitoringStatus> _checkerStatusLookup = new();
     private Dictionary<string, DateTimeOffset> _lastProbeRun = new();
@@ -736,8 +737,9 @@ else
                 var directProbesTask = Api.GetProbeAssignmentsAsync(Id);
                 var directCheckersTask = Api.GetCheckerAssignmentsAsync(Id);
                 var declaredMetricsTask = Api.GetDeclaredMetricsAsync(Id);
+                var nodesTask = Api.GetExecutorNodesAsync();
 
-                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask, directProbesTask, directCheckersTask, declaredMetricsTask); }
+                try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask, directProbesTask, directCheckersTask, declaredMetricsTask, nodesTask); }
                 catch (Exception ex) { Console.WriteLine($"[MONE] Task.WhenAll partial failure: {ex.GetType().Name}: {ex.Message}"); }
 
                 if (directProbesTask.IsCompletedSuccessfully)
@@ -782,6 +784,9 @@ else
 
                 if (pluginsTask.IsCompletedSuccessfully)
                     _loadedPlugins = pluginsTask.Result;
+
+                if (nodesTask.IsCompletedSuccessfully)
+                    _executorNodes = nodesTask.Result;
 
                 if (groupsTask.IsCompletedSuccessfully)
                     _groupNames = groupsTask.Result.ToDictionary(g => g.Id, g => g.Name);
@@ -1413,6 +1418,7 @@ else
         var parameters = new DialogParameters<ProbeAssignmentDialog>
         {
             { x => x.Plugins, _loadedPlugins },
+            { x => x.Nodes, _executorNodes },
             { x => x.IsEdit, true },
             { x => x.DefaultAddress, _host?.Address },
             { x => x.Model, new ProbeAssignmentDialog.FormModel
@@ -1422,7 +1428,8 @@ else
                     ScheduleCron = probe.ScheduleCron,
                     ConfigJson = probe.ConfigJson,
                     TargetAddressOverride = probe.TargetAddressOverride,
-                    Enabled = probe.Enabled
+                    Enabled = probe.Enabled,
+                    ExecutorNodeId = probe.ExecutorNodeId
                 }
             }
         };
@@ -1435,7 +1442,7 @@ else
             try
             {
                 await Api.UpdateProbeAssignmentAsync(Id, probe.AssignmentId,
-                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, model.TargetAddressOverride, model.Enabled));
+                    new UpdateProbeAssignmentRequest(model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, model.TargetAddressOverride, model.Enabled, model.ExecutorNodeId));
                 Snackbar.Add("Probe assignment updated.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
@@ -1465,6 +1472,7 @@ else
         var parameters = new DialogParameters<ProbeAssignmentDialog>
         {
             { x => x.Plugins, _loadedPlugins },
+            { x => x.Nodes, _executorNodes },
             { x => x.DefaultAddress, _host?.Address }
         };
         var dialog = await DialogService.ShowAsync<ProbeAssignmentDialog>("Add Probe Assignment", parameters,
@@ -1476,7 +1484,7 @@ else
             try
             {
                 await Api.CreateProbeAssignmentAsync(Id, new CreateProbeAssignmentRequest(
-                    model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, model.TargetAddressOverride, model.Enabled));
+                    model.ProbePluginId, model.Name, model.ScheduleCron, model.ConfigJson, model.TargetAddressOverride, model.Enabled, model.ExecutorNodeId));
                 Snackbar.Add("Probe assignment created.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
@@ -1513,7 +1521,8 @@ else
         var parameters = new DialogParameters<CheckerAssignmentDialog>
         {
             { x => x.Plugins, _loadedPlugins },
-            { x => x.MetricKeys, _metricKeys }
+            { x => x.MetricKeys, _metricKeys },
+            { x => x.Nodes, _executorNodes }
         };
         var dialog = await DialogService.ShowAsync<CheckerAssignmentDialog>("Add Checker Assignment", parameters,
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
@@ -1524,7 +1533,7 @@ else
             try
             {
                 await Api.CreateCheckerAssignmentAsync(Id, new CreateCheckerAssignmentRequest(
-                    model.CheckerPluginId, model.Name, model.ConfigJson, model.Enabled));
+                    model.CheckerPluginId, model.Name, model.ConfigJson, model.Enabled, model.ExecutorNodeId));
                 Snackbar.Add("Checker assignment created.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
@@ -1542,13 +1551,15 @@ else
         {
             { x => x.Plugins, _loadedPlugins },
             { x => x.MetricKeys, _metricKeys },
+            { x => x.Nodes, _executorNodes },
             { x => x.IsEdit, true },
             { x => x.Model, new CheckerAssignmentDialog.FormModel
                 {
                     CheckerPluginId = checker.CheckerPluginId,
                     Name = ResolveCheckerAssignmentName(checker.AssignmentId) ?? checker.CheckerPluginId,
                     ConfigJson = checker.ConfigJson,
-                    Enabled = checker.Enabled
+                    Enabled = checker.Enabled,
+                    ExecutorNodeId = checker.ExecutorNodeId
                 }
             }
         };
@@ -1561,7 +1572,7 @@ else
             try
             {
                 await Api.UpdateCheckerAssignmentAsync(Id, checker.AssignmentId,
-                    new UpdateCheckerAssignmentRequest(model.CheckerPluginId, model.Name, model.ConfigJson, model.Enabled));
+                    new UpdateCheckerAssignmentRequest(model.CheckerPluginId, model.Name, model.ConfigJson, model.Enabled, model.ExecutorNodeId));
                 Snackbar.Add("Checker assignment updated.", Severity.Success);
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();

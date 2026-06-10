@@ -11,7 +11,8 @@ public sealed record EffectiveProbeAssignment(
     string SourceType,
     Guid? SourceGroupId,
     bool IsOverridden,
-    string? OverrideConfigJson);
+    string? OverrideConfigJson,
+    Guid? ExecutorNodeId = null);
 
 public sealed record EffectiveCheckerAssignment(
     Guid AssignmentId,
@@ -21,7 +22,8 @@ public sealed record EffectiveCheckerAssignment(
     string SourceType,
     Guid? SourceGroupId,
     bool IsOverridden,
-    string? OverrideConfigJson);
+    string? OverrideConfigJson,
+    Guid? ExecutorNodeId = null);
 
 public sealed record EffectiveAssignmentsResponse(
     EffectiveProbeAssignment[] Probes,

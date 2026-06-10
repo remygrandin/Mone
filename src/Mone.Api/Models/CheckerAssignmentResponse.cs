@@ -8,4 +8,5 @@ public sealed record CheckerAssignmentResponse(
     string Name,
     string NameSnakeCase,
     string? ConfigJson,
-    bool Enabled);
+    bool Enabled,
+    Guid? ExecutorNodeId = null);

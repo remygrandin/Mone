@@ -15,6 +15,7 @@ public sealed class StreamCheckerService(
     IServiceScopeFactory scopeFactory,
     Mone.PluginEngine.PluginEngine pluginEngine,
     CheckerDispatcher dispatcher,
+    ResolvedNodeIdentity nodeIdentity,
     ILogger<StreamCheckerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -64,6 +65,7 @@ public sealed class StreamCheckerService(
 
         var enabledAssignments = effectiveAssignments
             .Where(a => a.Enabled)
+            .Where(a => a.ExecutorNodeId is null || a.ExecutorNodeId == nodeIdentity.Id)
             .Where(a => IsOnProbeResult(a.CheckerPluginId))
             .ToList();
 

@@ -185,6 +185,7 @@ app.MapStatusEndpoints();
 app.MapProbeResultEndpoints();
 app.MapNotificationAuditEndpoints();
 app.MapNotificationConfigEndpoints();
+app.MapExecutorNodeEndpoints();
 app.MapDashboardEndpoints();
 app.MapPluginRepositoryEndpoints();
 app.MapLoadedPluginEndpoints();

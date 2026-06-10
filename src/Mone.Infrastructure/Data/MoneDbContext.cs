@@ -24,6 +24,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
     public DbSet<ProbeAssignmentOverrideEntity> ProbeAssignmentOverrides => Set<ProbeAssignmentOverrideEntity>();
     public DbSet<CheckerAssignmentOverrideEntity> CheckerAssignmentOverrides => Set<CheckerAssignmentOverrideEntity>();
     public DbSet<ProbeAssignmentMetricEntity> ProbeAssignmentMetrics => Set<ProbeAssignmentMetricEntity>();
+    public DbSet<ExecutorNodeEntity> ExecutorNodes => Set<ExecutorNodeEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +72,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.HasIndex(x => new { x.GroupId, x.NameSnakeCase })
                 .IsUnique()
                 .HasFilter("\"GroupId\" IS NOT NULL");
+            e.HasOne(x => x.ExecutorNode).WithMany().HasForeignKey(x => x.ExecutorNodeId).OnDelete(DeleteBehavior.SetNull);
             e.ToTable(t => t.HasCheckConstraint("CK_probe_assignments_host_or_group", "(\"HostId\" IS NOT NULL AND \"GroupId\" IS NULL) OR (\"HostId\" IS NULL AND \"GroupId\" IS NOT NULL)"));
         });
 
@@ -89,6 +91,17 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.HasIndex(x => new { x.ProbeAssignmentId, x.FullKey }).IsUnique();
         });
 
+        modelBuilder.Entity<ExecutorNodeEntity>(e =>
+        {
+            e.ToTable("executor_nodes");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(256);
+            e.Property(x => x.Hostname).HasMaxLength(256);
+            e.Property(x => x.Address).HasMaxLength(64);
+            e.Property(x => x.Version).HasMaxLength(64);
+            e.HasIndex(x => x.Name).IsUnique();
+        });
+
         modelBuilder.Entity<CheckerAssignmentEntity>(e =>
         {
             e.ToTable("checker_assignments");
@@ -104,6 +117,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.HasIndex(x => new { x.GroupId, x.NameSnakeCase })
                 .IsUnique()
                 .HasFilter("\"GroupId\" IS NOT NULL");
+            e.HasOne(x => x.ExecutorNode).WithMany().HasForeignKey(x => x.ExecutorNodeId).OnDelete(DeleteBehavior.SetNull);
             e.ToTable(t => t.HasCheckConstraint("CK_checker_assignments_host_or_group", "(\"HostId\" IS NOT NULL AND \"GroupId\" IS NULL) OR (\"HostId\" IS NULL AND \"GroupId\" IS NOT NULL)"));
         });
 
