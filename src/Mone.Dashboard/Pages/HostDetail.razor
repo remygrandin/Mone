@@ -139,7 +139,7 @@ else
                                 @foreach (var checker in _effectiveCheckers)
                                 {
                                     <tr>
-                                        <td>@checker.CheckerPluginId</td>
+                                        <td>@CheckerDisplayName(checker.CheckerPluginId)</td>
                                         <td>
                                             <MudChip T="string" Color="StatusColorHelper.ToMudColor(GetCheckerStatus(checker.CheckerPluginId))" Size="Size.Small">
                                                 @StatusColorHelper.ToLabel(GetCheckerStatus(checker.CheckerPluginId))
@@ -294,7 +294,7 @@ else
                         @foreach (var change in stateChanges)
                         {
                             <tr>
-                                <td>@change.CheckerId</td>
+                                <td>@CheckerDisplayName(change.CheckerId)</td>
                                 <td>
                                     <MudChip T="string" Color="StatusColorHelper.ToMudColor(change.PreviousStatus)" Size="Size.Small">
                                         @StatusColorHelper.ToLabel(change.PreviousStatus)
