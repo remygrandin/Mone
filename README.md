@@ -93,6 +93,16 @@ bind specific assignments to them. See
 connection environment variables, the shared-token security model, and
 docker-compose / systemd examples.
 
+## Documentation
+
+Full documentation lives in [docs/](docs/):
+
+- [Architecture](docs/architecture.md) — services, data flow, messaging, and data model.
+- [Deployment guide](docs/deployment.md) — running, hardening, scaling, backups.
+- [Configuration reference](docs/configuration.md) — all environment variables.
+- [User guide](docs/user-guide.md) — using the dashboard day to day.
+- [Remote executors](docs/remote-executors.md) — running executors on other hosts.
+
 ## API Documentation
 
 Interactive API docs are available at [http://localhost:8080/scalar/v1](http://localhost:8080/scalar/v1) when the API is running.
