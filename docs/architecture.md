@@ -50,7 +50,7 @@ extra executors on other hosts see [remote-executors.md](remote-executors.md).
 |-----------|---------|----------------|
 | **API** | `Mone.Api` | REST API (minimal-API endpoints) + serves the Blazor WASM dashboard. Owns the database: runs EF Core migrations on startup, seeds the admin user, authenticates users (JWT / OIDC / LDAP), and is the source of truth for assignment config. Probe Executors pull their config from here. |
 | **Dashboard** | `Mone.Dashboard` | Blazor WebAssembly client, served as static assets by the API. All UI. |
-| **Probe Executor** | `Mone.ProbeExecutor` | Runs probe plugins on a Quartz.NET schedule and receives passive input (webhook HTTP, UDP syslog/SNMP-trap). Publishes results to NATS. Stateless w.r.t. Postgres — caches config and spools results to local SQLite. |
+| **Probe Executor** | `Mone.ProbeExecutor` | Runs active probe plugins on a Quartz.NET schedule and hosts passive probe plugins (webhook HTTP, syslog/SNMP-trap UDP), which own their own listeners — the executor only arbitrates port collisions and hands each plugin its assignments plus the spooling result sink. Publishes results to NATS. Stateless w.r.t. Postgres — caches config and spools results to local SQLite. |
 | **Checker Engine** | `Mone.CheckerEngine` | Consumes probe results from NATS, evaluates them with checker plugins, and publishes status changes. Reads/writes Postgres directly. |
 | **Alert Engine** | `Mone.AlertEngine` | Consumes status changes from NATS and dispatches notifications via notification plugins. Reads Postgres for notification config, writes a delivery audit. |
 
@@ -183,8 +183,10 @@ by the inheritance resolver in `Mone.Infrastructure` and exposed through the
 All plugins implement `IPlugin` (`Name`, `Version`, `Description`,
 `InitializeAsync`) plus one kind-specific interface:
 
-- **Probe** — `IProbePlugin` (active polling), `IPassiveProbePlugin` (HTTP
-  webhook), or `IPassiveUdpPlugin` (UDP listener, e.g. syslog/SNMP-trap).
+- **Probe** — `IProbePlugin` (active polling) or `IPassiveProbePlugin` (passive
+  ingress, e.g. webhook HTTP, syslog/SNMP-trap UDP). A passive probe owns its own
+  listener: it declares only a `Protocol` (TCP/UDP) and `Port` to the executor and
+  hosts whatever responder, protocol decoding, and auth it needs.
 - **Checker** — `ICheckerPlugin`, evaluating a `CheckerEvaluationContext` to a
   `MonitoringStatus`.
 - **Notification** — `INotificationPlugin`, dispatching on a `StatusChange`.

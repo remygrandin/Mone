@@ -5,6 +5,7 @@ using Mone.CheckerEngine.Services;
 using Mone.CheckerEngine.Tests.Fixtures;
 using Mone.Contracts.Models;
 using Mone.Infrastructure.Data.Entities;
+using Mone.Infrastructure.Services;
 using Mone.Messaging;
 using Mone.Messaging.Messages;
 using NATS.Client.JetStream;
@@ -51,7 +52,8 @@ public sealed class CheckerPipelineTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var dispatcher = new CheckerDispatcher(
             js, pluginEngine, statusTracker, NullLogger<CheckerDispatcher>.Instance);
-        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, logger);
+        var nodeIdentity = new ResolvedNodeIdentity(Guid.NewGuid(), "test-checker", ExecutorRole.Checker);
+        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, nodeIdentity, logger);
 
         var statusConsumer = await js.CreateOrUpdateConsumerAsync(
             MoneStreams.StatusChanges.StreamName,
@@ -132,7 +134,8 @@ public sealed class CheckerPipelineTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var dispatcher = new CheckerDispatcher(
             js, pluginEngine, statusTracker, NullLogger<CheckerDispatcher>.Instance);
-        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, logger);
+        var nodeIdentity = new ResolvedNodeIdentity(Guid.NewGuid(), "test-checker", ExecutorRole.Checker);
+        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, nodeIdentity, logger);
 
         var statusConsumer = await js.CreateOrUpdateConsumerAsync(
             MoneStreams.StatusChanges.StreamName,
@@ -210,7 +213,8 @@ public sealed class CheckerPipelineTests
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var dispatcher = new CheckerDispatcher(
             js, pluginEngine, statusTracker, NullLogger<CheckerDispatcher>.Instance);
-        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, logger);
+        var nodeIdentity = new ResolvedNodeIdentity(Guid.NewGuid(), "test-checker", ExecutorRole.Checker);
+        var service = new StreamCheckerService(js, scopeFactory, pluginEngine, dispatcher, nodeIdentity, logger);
 
         var statusConsumer = await js.CreateOrUpdateConsumerAsync(
             MoneStreams.StatusChanges.StreamName,

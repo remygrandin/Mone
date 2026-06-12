@@ -28,7 +28,9 @@ public sealed class PluginLoader : IDisposable
                 typeof(IPlugin),
                 typeof(IProbePlugin),
                 typeof(IPassiveProbePlugin),
-                typeof(IPassiveUdpPlugin),
+                typeof(IPassiveProbeHost),
+                typeof(PassiveAssignment),
+                typeof(PassiveProtocol),
                 typeof(ICheckerPlugin),
                 typeof(INotificationPlugin),
                 typeof(IPluginContext),
@@ -105,6 +107,27 @@ public sealed class PluginLoader : IDisposable
         var pluginId = $"{plugin.Name}@{plugin.Version}";
         var configManifest = ExtractConfigManifest(plugin);
         var infoVersion = ReadInformationalVersion(type.Assembly);
+
+        // Passive probes are recognised by the interface alone — they own their listener and need
+        // no ProbePluginAttribute. InstantiationMode is not a passive concept (the plugin is a
+        // singleton that accumulates per-assignment config), so it is left null.
+        if (typeof(IPassiveProbePlugin).IsAssignableFrom(type))
+        {
+            return new PluginMetadata
+            {
+                PluginId = pluginId,
+                Name = plugin.Name,
+                Version = plugin.Version,
+                InformationalVersion = infoVersion,
+                Description = plugin.Description,
+                PluginTypeName = type.FullName!,
+                Kind = PluginKind.Probe,
+                ProbeMode = Mone.Contracts.Models.ProbeMode.Passive,
+                InstantiationMode = null,
+                AssemblyPath = _assemblyPath,
+                ConfigManifest = configManifest
+            };
+        }
 
         if (typeof(IProbePlugin).IsAssignableFrom(type))
         {
