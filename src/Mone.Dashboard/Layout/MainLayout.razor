@@ -1,9 +1,13 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
 @using Mone.Dashboard.Auth
 @using Mone.Dashboard.Services
+@using Mone.Dashboard.Models
 @inject AuthService AuthService
 @inject JwtAuthStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject PermissionState Permissions
 
 <MudThemeProvider />
 <MudPopoverProvider />
@@ -23,12 +27,36 @@
             <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
                 <MudNavMenu>
                     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
-                    <MudNavLink Href="/hosts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Hosts</MudNavLink>
-                    <MudNavLink Href="/groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree">Groups</MudNavLink>
-                    <MudNavLink Href="/notifications" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Notifications">Notifications</MudNavLink>
-                    <MudNavLink Href="/nodes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Hub">Nodes</MudNavLink>
-                    <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Extension">Plugins</MudNavLink>
-                    <MudNavLink Href="/housekeeping" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CleaningServices">Housekeeping</MudNavLink>
+                    @if (Permissions.Has(PermissionResource.Hosts))
+                    {
+                        <MudNavLink Href="/hosts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Hosts</MudNavLink>
+                    }
+                    @if (Permissions.Has(PermissionResource.Groups))
+                    {
+                        <MudNavLink Href="/groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree">Groups</MudNavLink>
+                    }
+                    @if (Permissions.Has(PermissionResource.Notifications))
+                    {
+                        <MudNavLink Href="/notifications" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Notifications">Notifications</MudNavLink>
+                    }
+                    @if (Permissions.Has(PermissionResource.ExecutorNodes))
+                    {
+                        <MudNavLink Href="/nodes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Hub">Nodes</MudNavLink>
+                    }
+                    @if (Permissions.Has(PermissionResource.Plugins))
+                    {
+                        <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Extension">Plugins</MudNavLink>
+                    }
+                    @if (Permissions.Has(PermissionResource.System))
+                    {
+                        <MudNavLink Href="/housekeeping" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CleaningServices">Housekeeping</MudNavLink>
+                    }
+                    @if (Permissions.Has(PermissionResource.Administration))
+                    {
+                        <MudDivider Class="my-2" />
+                        <MudNavLink Href="/admin/roles" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AdminPanelSettings">Roles</MudNavLink>
+                        <MudNavLink Href="/admin/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
+                    }
                 </MudNavMenu>
             </MudDrawer>
             <MudMainContent Class="pa-4 pt-20">
@@ -48,6 +76,45 @@
 @code {
     private bool _drawerOpen = true;
 
+    protected override async Task OnInitializedAsync()
+    {
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        await LoadPermissionsAsync(await AuthStateProvider.GetAuthenticationStateAsync());
+    }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> task)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await LoadPermissionsAsync(await task);
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadPermissionsAsync(AuthenticationState authState)
+    {
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            try
+            {
+                await Permissions.EnsureLoadedAsync(force: true);
+            }
+            catch
+            {
+                // Navigation simply hides gated links if capabilities can't be loaded.
+            }
+        }
+        else
+        {
+            Permissions.Reset();
+        }
+    }
+
+    public void Dispose()
+    {
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
@@ -56,6 +123,7 @@
     private async Task HandleLogout()
     {
         await AuthService.LogoutAsync();
+        Permissions.Reset();
         AuthStateProvider.NotifyAuthStateChanged();
         Navigation.NavigateTo("/login");
     }
