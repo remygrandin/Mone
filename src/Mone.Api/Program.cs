@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -59,6 +60,17 @@ if (oidcEnabled)
 }
 
 builder.Services.AddAuthorization();
+
+// So node register/heartbeat calls report the real client IP (not the proxy's) when the API runs
+// behind nginx/Traefik. KnownNetworks/KnownProxies are cleared because the proxy is not on a
+// loopback address in container/LAN deployments; the forwarded address is informational only
+// (node routes are gated by X-Node-Token), so trusting X-Forwarded-For here is acceptable.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddOpenApi();
 
@@ -170,6 +182,8 @@ _ = Task.Run(async () =>
         catch (Exception ex) { app.Logger.LogWarning(ex, "Initial sync failed for repository {RepositoryId}", id); }
     }
 });
+
+app.UseForwardedHeaders();
 
 app.UseAuthentication();
 app.UseAuthorization();

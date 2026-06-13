@@ -66,7 +66,7 @@ probes; needs `NET_RAW` for ICMP ping.
 | `Mone__Node__Name` | `<machine>-probe` | Friendly node name shown in the dashboard. |
 | `Mone__Node__Token` | unset | Shared secret; must match the API's `Mone__Node__Token`. |
 | `Mone__Node__Id` | stable per-machine GUID | Override the node GUID. Leave unset for the deterministic default. |
-| `Mone__Node__Address` | — | Advertised IP/hostname shown in **Nodes** (informational). |
+| `Mone__Node__Address` | observed source IP | Advertised IP/hostname shown in **Nodes** (informational). Defaults to the source IP the API sees on register/heartbeat; set explicitly to override. |
 | `Mone__Node__SpoolPath` | `/app/data/spool.db` | Local SQLite spool (cached config + unforwarded results). Mount a persistent volume here. |
 
 ## Checker Engine (`Mone.CheckerEngine`)
@@ -81,7 +81,7 @@ changes. Reads/writes Postgres directly.
 | `Mone__Node__Name` | `<machine>-checker` | Friendly node name. |
 | `Mone__Node__Token` | unset | Shared secret; must match the API. |
 | `Mone__Node__Id` | stable per-machine GUID | Override the node GUID. |
-| `Mone__Node__Address` | — | Advertised address shown in **Nodes**. |
+| `Mone__Node__Address` | observed source IP | Advertised address shown in **Nodes**. Defaults to the source IP the API sees on register/heartbeat; set explicitly to override. |
 
 ## Alert Engine (`Mone.AlertEngine`)
 

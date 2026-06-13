@@ -30,6 +30,10 @@ public static class ExecutorNodeEndpoints
                 return Results.Unauthorized();
 
             var now = DateTimeOffset.UtcNow;
+            // Explicit Mone:Node:Address wins; otherwise advertise the source IP the API observed
+            // the register call coming from. For genuinely remote executors that's their real
+            // address; for co-located compose containers it's the bridge IP.
+            var resolvedAddress = ResolveAddress(request.Address, http);
             var node = await db.ExecutorNodes.FirstOrDefaultAsync(n => n.Id == request.Id);
             if (node is null)
             {
@@ -38,7 +42,7 @@ public static class ExecutorNodeEndpoints
                     Id = request.Id,
                     Name = request.Name,
                     Hostname = request.Hostname,
-                    Address = request.Address,
+                    Address = resolvedAddress,
                     Role = (ExecutorRole)request.Role,
                     Version = request.Version,
                     RegisteredAt = now,
@@ -50,7 +54,7 @@ public static class ExecutorNodeEndpoints
             {
                 node.Name = request.Name;
                 node.Hostname = request.Hostname;
-                node.Address = request.Address;
+                node.Address = resolvedAddress;
                 node.Role = (ExecutorRole)request.Role;
                 node.Version = request.Version;
                 node.LastHeartbeatAt = now;
@@ -76,6 +80,10 @@ public static class ExecutorNodeEndpoints
             node.LastHeartbeatAt = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(request.Version))
                 node.Version = request.Version;
+            // Backfill the observed source IP for nodes that registered before address capture, or
+            // before the API could see them. An explicitly-advertised address is never overwritten.
+            if (string.IsNullOrWhiteSpace(node.Address))
+                node.Address = ObservedIp(http);
 
             await db.SaveChangesAsync();
             return Results.NoContent();
@@ -167,6 +175,19 @@ public static class ExecutorNodeEndpoints
             await db.SaveChangesAsync();
             return Results.NoContent();
         });
+    }
+
+    // Explicit advertised address wins; otherwise the IP the connection arrived from.
+    private static string? ResolveAddress(string? explicitAddress, HttpContext http) =>
+        !string.IsNullOrWhiteSpace(explicitAddress) ? explicitAddress : ObservedIp(http);
+
+    private static string? ObservedIp(HttpContext http)
+    {
+        var ip = http.Connection.RemoteIpAddress;
+        if (ip is null) return null;
+        // Normalize IPv4-mapped IPv6 (e.g. ::ffff:172.18.0.3) down to plain IPv4 for display.
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        return ip.ToString();
     }
 
     private static bool IsNodeTokenValid(HttpContext http, IConfiguration config)

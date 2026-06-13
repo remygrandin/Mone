@@ -53,7 +53,7 @@ the same host, give them distinct names — they register as separate nodes
 | `Mone__Node__Token` | both | recommended | Shared secret sent as the `X-Node-Token` header on register/heartbeat and the config pull. Must match the API's `Mone__Node__Token`. If unset on the API, node routes are open. |
 | `Mone__Node__Name` | both | recommended | Friendly node name shown in the dashboard. |
 | `Mone__Node__Id` | both | optional | Override the node GUID. Leave unset to use the stable per-machine default. |
-| `Mone__Node__Address` | both | optional | Advertised IP/hostname shown in the Nodes page (informational; does not affect connectivity). |
+| `Mone__Node__Address` | both | optional | Advertised IP/hostname shown in the Nodes page (informational; does not affect connectivity). Defaults to the source IP the API observes on register/heartbeat — accurate for genuinely remote nodes, the compose bridge IP for co-located containers. Set explicitly to override. If the API runs behind a reverse proxy, the source IP is taken from `X-Forwarded-For`. |
 | `Mone__Node__SpoolPath` | probe | optional | Path to the probe executor's local SQLite spool (cached config + unforwarded results). Default `/app/data/spool.db`; mount a persistent volume there so the cache and any buffered results survive restarts. |
 | `ProbeExecutor__PluginDirectory` | probe | yes | Path to probe plugin DLLs (default `/app/plugins`). |
 | `CheckerEngine__PluginDirectory` | checker | yes | Path to checker plugin DLLs (default `plugins`). |
