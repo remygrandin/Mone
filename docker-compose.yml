@@ -75,6 +75,9 @@ services:
     build:
       context: ..
       dockerfile: Mone/src/Mone.ProbeExecutor/Dockerfile
+    # Stable hostname so the derived node identity (GUID + name come from the machine name)
+    # survives container recreation; without this every rebuild registers a new node.
+    hostname: mone-probe-executor
     environment:
       # Remote executor keeps no Postgres: config is pulled from the API and cached on the spool
       # volume; results go out over NATS, spooling locally when NATS is unreachable.
@@ -108,6 +111,9 @@ services:
     build:
       context: ..
       dockerfile: Mone/src/Mone.CheckerEngine/Dockerfile
+    # Stable hostname so the derived node identity (GUID + name come from the machine name)
+    # survives container recreation; without this every rebuild registers a new node.
+    hostname: mone-checker-engine
     environment:
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=mone;Username=postgres;Password=${POSTGRES_PASSWORD:-mone_dev}
       ConnectionStrings__Nats: nats://nats:4222
