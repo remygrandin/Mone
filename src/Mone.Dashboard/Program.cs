@@ -16,6 +16,7 @@ builder.Services.AddScoped<JwtAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<JwtAuthStateProvider>());
 builder.Services.AddScoped<AuthorizationMessageHandler>();
 builder.Services.AddScoped<ApiClient>();
+builder.Services.AddScoped<PermissionState>();
 
 builder.Services.AddScoped(sp =>
 {

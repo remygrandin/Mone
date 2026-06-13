@@ -1,0 +1,230 @@
+@page "/admin/roles"
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Services
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h4" Class="mb-4">Roles</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudToolBar Dense="true">
+                <MudText Typo="Typo.h6">Roles</MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="StartCreate">New Role</MudButton>
+            </MudToolBar>
+
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Class="mt-4" />
+            }
+            else
+            {
+                <MudList T="RoleResponse" Class="mt-2" SelectedValue="_selected" SelectedValueChanged="SelectRole">
+                    @foreach (var role in _roles)
+                    {
+                        <MudListItem T="RoleResponse" Value="role">
+                            <div class="d-flex align-center">
+                                <MudText>@role.Name</MudText>
+                                @if (role.IsSystem)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">System</MudChip>
+                                }
+                                <MudSpacer />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@role.AssignmentCount</MudText>
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="8">
+        @if (_editing)
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-2">
+                    @(_isNew ? "New Role" : _selected?.Name)
+                    @if (_selected?.IsSystem == true)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">System (read-only)</MudChip>
+                    }
+                </MudText>
+
+                <MudTextField @bind-Value="_name" Label="Name" Disabled="_readOnly" Class="mb-2" />
+                <MudTextField @bind-Value="_description" Label="Description" Disabled="_readOnly" Class="mb-4" />
+
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Permissions</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr><th>Resource</th><th>Applies to</th><th style="width:160px">Level</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var info in _catalogResources)
+                        {
+                            <tr>
+                                <td><MudText Typo="Typo.body2">@info.Resource</MudText></td>
+                                <td><MudText Typo="Typo.caption" Color="Color.Secondary">@info.AppliesTo</MudText></td>
+                                <td>
+                                    <MudSelect T="PermissionLevel" Value="GetLevel(info.Resource)"
+                                               ValueChanged="@(v => SetLevel(info.Resource, v))"
+                                               Dense="true" Disabled="_readOnly">
+                                        <MudSelectItem Value="PermissionLevel.None">None</MudSelectItem>
+                                        <MudSelectItem Value="PermissionLevel.View">View</MudSelectItem>
+                                        <MudSelectItem Value="PermissionLevel.Manage">Manage</MudSelectItem>
+                                    </MudSelect>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+
+                @if (!_readOnly)
+                {
+                    <div class="d-flex mt-4">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveRole">Save</MudButton>
+                        @if (!_isNew)
+                        {
+                            <MudSpacer />
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteRole">Delete</MudButton>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        }
+        else
+        {
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Color="Color.Secondary">Select a role to view or edit, or create a new one.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool _loading = true;
+    private RoleResponse[] _roles = [];
+    private List<PermissionResourceInfo> _catalogResources = new();
+
+    private RoleResponse? _selected;
+    private bool _editing;
+    private bool _isNew;
+    private bool _readOnly;
+    private string _name = "";
+    private string? _description;
+    private readonly Dictionary<PermissionResource, PermissionLevel> _levels = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var catalog = await Api.GetPermissionCatalogAsync();
+            _catalogResources = catalog?.Resources ?? new();
+            await LoadRoles();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        _loading = false;
+    }
+
+    private async Task LoadRoles() => _roles = await Api.GetRolesAsync();
+
+    private void StartCreate()
+    {
+        _selected = null;
+        _isNew = true;
+        _readOnly = false;
+        _editing = true;
+        _name = "";
+        _description = null;
+        _levels.Clear();
+    }
+
+    private void SelectRole(RoleResponse? role)
+    {
+        if (role is null) return;
+        _selected = role;
+        _isNew = false;
+        _readOnly = role.IsSystem;
+        _editing = true;
+        _name = role.Name;
+        _description = role.Description;
+        _levels.Clear();
+        foreach (var p in role.Permissions)
+            _levels[p.Resource] = p.Level;
+    }
+
+    private PermissionLevel GetLevel(PermissionResource resource) =>
+        _levels.TryGetValue(resource, out var l) ? l : PermissionLevel.None;
+
+    private void SetLevel(PermissionResource resource, PermissionLevel level)
+    {
+        if (level == PermissionLevel.None) _levels.Remove(resource);
+        else _levels[resource] = level;
+    }
+
+    private async Task SaveRole()
+    {
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            Snackbar.Add("Name is required.", Severity.Warning);
+            return;
+        }
+
+        var permissions = _levels
+            .Where(kv => kv.Value != PermissionLevel.None)
+            .Select(kv => new RolePermissionDto(kv.Key, kv.Value))
+            .ToList();
+        var request = new UpsertRoleRequest(_name.Trim(), _description, permissions);
+
+        try
+        {
+            if (_isNew)
+            {
+                var created = await Api.CreateRoleAsync(request);
+                Snackbar.Add("Role created.", Severity.Success);
+                await LoadRoles();
+                if (created is not null) SelectRole(_roles.FirstOrDefault(r => r.Id == created.Id));
+            }
+            else if (_selected is not null)
+            {
+                var updated = await Api.UpdateRoleAsync(_selected.Id, request);
+                Snackbar.Add("Role updated.", Severity.Success);
+                await LoadRoles();
+                if (updated is not null) SelectRole(_roles.FirstOrDefault(r => r.Id == updated.Id));
+            }
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task DeleteRole()
+    {
+        if (_selected is null) return;
+        var confirm = await DialogService.ShowMessageBox("Delete Role",
+            $"Delete role '{_selected.Name}'?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        try
+        {
+            await Api.DeleteRoleAsync(_selected.Id);
+            Snackbar.Add("Role deleted.", Severity.Success);
+            _editing = false;
+            _selected = null;
+            await LoadRoles();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

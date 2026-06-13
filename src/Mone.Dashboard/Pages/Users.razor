@@ -1,0 +1,199 @@
+@page "/admin/users"
+@using Mone.Dashboard.Models
+@using Mone.Dashboard.Services
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject ApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h4" Class="mb-4">Users</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Class="mt-4" />
+}
+else
+{
+    <MudGrid>
+        @foreach (var user in _users)
+        {
+            <MudItem xs="12" md="6">
+                <MudPaper Class="pa-4" Elevation="2">
+                    <div class="d-flex align-center mb-2">
+                        <MudText Typo="Typo.h6">@user.Email</MudText>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="@(() => StartAssign(user))">Assign Role</MudButton>
+                    </div>
+
+                    @if (user.Assignments.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No role assignments.</MudText>
+                    }
+                    else
+                    {
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <thead>
+                                <tr><th>Role</th><th>Scope</th><th style="width:48px"></th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in user.Assignments)
+                                {
+                                    <tr>
+                                        <td><MudText Typo="Typo.body2">@a.RoleName</MudText></td>
+                                        <td><MudText Typo="Typo.caption" Color="Color.Secondary">@ScopeLabel(a)</MudText></td>
+                                        <td>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                           Color="Color.Error"
+                                                           OnClick="@(() => RevokeAssignment(user, a))" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<MudDialog @bind-Visible="_assignOpen">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Assign Role to @_assignUser?.Email</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSelect T="Guid?" @bind-Value="_assignRoleId" Label="Role" Dense="true" Class="mb-2">
+            @foreach (var role in _roles)
+            {
+                <MudSelectItem T="Guid?" Value="@((Guid?)role.Id)">@role.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="ScopeType" @bind-Value="_assignScopeType" Label="Scope" Dense="true" Class="mb-2">
+            <MudSelectItem Value="ScopeType.Global">Global</MudSelectItem>
+            <MudSelectItem Value="ScopeType.Group">Group</MudSelectItem>
+            <MudSelectItem Value="ScopeType.Tag">Tag</MudSelectItem>
+        </MudSelect>
+
+        @if (_assignScopeType == ScopeType.Group)
+        {
+            <MudSelect T="Guid?" @bind-Value="_assignScopeId" Label="Group" Dense="true">
+                @foreach (var g in _groups)
+                {
+                    <MudSelectItem T="Guid?" Value="@((Guid?)g.Id)">@g.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else if (_assignScopeType == ScopeType.Tag)
+        {
+            <MudSelect T="Guid?" @bind-Value="_assignScopeId" Label="Tag" Dense="true">
+                @foreach (var t in _tags)
+                {
+                    <MudSelectItem T="Guid?" Value="@((Guid?)t.Id)">@t.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _assignOpen = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAssign">Assign</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _loading = true;
+    private UserWithRolesResponse[] _users = [];
+    private RoleResponse[] _roles = [];
+    private HostGroupResponse[] _groups = [];
+    private TagResponse[] _tags = [];
+
+    private bool _assignOpen;
+    private UserWithRolesResponse? _assignUser;
+    private Guid? _assignRoleId;
+    private ScopeType _assignScopeType = ScopeType.Global;
+    private Guid? _assignScopeId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _roles = await Api.GetRolesAsync();
+            _groups = await Api.GetHostGroupsAsync();
+            _tags = await Api.GetTagsAsync();
+            await LoadUsers();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        _loading = false;
+    }
+
+    private async Task LoadUsers() => _users = await Api.GetUsersAsync();
+
+    private static string ScopeLabel(UserRoleAssignmentResponse a) => a.ScopeType switch
+    {
+        ScopeType.Global => "Global",
+        _ => $"{a.ScopeType}: {a.ScopeName ?? a.ScopeId?.ToString() ?? "?"}"
+    };
+
+    private void StartAssign(UserWithRolesResponse user)
+    {
+        _assignUser = user;
+        _assignRoleId = _roles.FirstOrDefault()?.Id;
+        _assignScopeType = ScopeType.Global;
+        _assignScopeId = null;
+        _assignOpen = true;
+    }
+
+    private async Task SubmitAssign()
+    {
+        if (_assignUser is null) return;
+        if (_assignRoleId is null)
+        {
+            Snackbar.Add("Select a role.", Severity.Warning);
+            return;
+        }
+
+        var scopeId = _assignScopeType == ScopeType.Global ? null : _assignScopeId;
+        if (_assignScopeType != ScopeType.Global && scopeId is null)
+        {
+            Snackbar.Add("Select a scope target.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            await Api.AssignRoleAsync(_assignUser.Id,
+                new AssignRoleRequest(_assignRoleId.Value, _assignScopeType, scopeId));
+            Snackbar.Add("Role assigned.", Severity.Success);
+            _assignOpen = false;
+            await LoadUsers();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task RevokeAssignment(UserWithRolesResponse user, UserRoleAssignmentResponse assignment)
+    {
+        var confirm = await DialogService.ShowMessageBox("Revoke Assignment",
+            $"Revoke '{assignment.RoleName}' ({ScopeLabel(assignment)}) from {user.Email}?",
+            yesText: "Revoke", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        try
+        {
+            await Api.RevokeRoleAsync(user.Id, assignment.Id);
+            Snackbar.Add("Assignment revoked.", Severity.Success);
+            await LoadUsers();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

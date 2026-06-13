@@ -77,6 +77,8 @@ builder.Services.AddSingleton<Mone.PluginEngine.PluginEngine>();
 builder.Services.AddSingleton<IInstalledPluginQuery, PluginEngineInstalledPluginQuery>();
 builder.Services.AddScoped<IPluginRepositoryService, PluginRepositoryService>();
 builder.Services.AddScoped<InheritanceResolver>();
+builder.Services.AddScoped<ScopeResolver>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<ExternalAuthProvisioningService>();
 builder.Services.AddScoped<ProbeAssignmentNameValidator>();
@@ -112,16 +114,24 @@ using (var scope = app.Services.CreateScope())
     }
 
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<UserEntity>>();
-    if (await userManager.FindByEmailAsync("admin@mone.local") is null)
+    var admin = await userManager.FindByEmailAsync("admin@mone.local");
+    if (admin is null)
     {
-        var admin = new UserEntity { UserName = "admin@mone.local", Email = "admin@mone.local" };
+        admin = new UserEntity { UserName = "admin@mone.local", Email = "admin@mone.local" };
         var result = await userManager.CreateAsync(admin, "Admin123!");
         if (result.Succeeded)
             app.Logger.LogInformation("Default admin user created: admin@mone.local");
         else
+        {
             app.Logger.LogWarning("Failed to create default admin: {Errors}",
                 string.Join("; ", result.Errors.Select(e => e.Description)));
+            admin = null;
+        }
     }
+
+    var superAdminRoleId = await RbacSeeder.EnsureSuperAdminRoleAsync(db);
+    if (admin is not null)
+        await RbacSeeder.EnsureGlobalAssignmentAsync(db, admin.Id, superAdminRoleId);
 }
 
 var pluginDir = builder.Configuration["Api:PluginDirectory"] ?? "plugins";
@@ -199,6 +209,9 @@ app.MapEffectiveAssignmentEndpoints();
 app.MapAssignmentOverrideEndpoints();
 app.MapProbeTriggerEndpoints();
 app.MapHousekeepingEndpoints();
+app.MapRoleEndpoints();
+app.MapUserAdminEndpoints();
+app.MapPermissionEndpoints();
 
 app.MapFallbackToFile("index.html")
     .AllowAnonymous();

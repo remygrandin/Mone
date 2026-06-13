@@ -4,13 +4,18 @@ using Mone.Api.Services;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class CheckerAssignmentEndpoints
 {
     public static void MapCheckerAssignmentEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/hosts/{hostId:guid}/checkers").RequireAuthorization();
+        var group = app.MapGroup("/api/hosts/{hostId:guid}/checkers")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Assignments);
 
         group.MapGet("/", async (Guid hostId, MoneDbContext db) =>
         {

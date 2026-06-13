@@ -121,6 +121,35 @@ public sealed class ApiClient
     public async Task DeleteExecutorNodeAsync(Guid id) =>
         await DeleteAsync($"api/executor-nodes/{id}");
 
+    // ---- IAM (roles, users, permissions) ----
+
+    public async Task<MyPermissionsResponse?> GetMyPermissionsAsync() =>
+        await GetAsync<MyPermissionsResponse>("api/auth/me/permissions");
+
+    public async Task<PermissionCatalogResponse?> GetPermissionCatalogAsync() =>
+        await GetAsync<PermissionCatalogResponse>("api/permissions/catalog");
+
+    public async Task<RoleResponse[]> GetRolesAsync() =>
+        await GetAsync<RoleResponse[]>("api/roles") ?? [];
+
+    public async Task<RoleResponse?> CreateRoleAsync(UpsertRoleRequest request) =>
+        await PostAsync<UpsertRoleRequest, RoleResponse>("api/roles", request);
+
+    public async Task<RoleResponse?> UpdateRoleAsync(Guid id, UpsertRoleRequest request) =>
+        await PutWithResponseAsync<UpsertRoleRequest, RoleResponse>($"api/roles/{id}", request);
+
+    public async Task DeleteRoleAsync(Guid id) =>
+        await DeleteAsync($"api/roles/{id}");
+
+    public async Task<UserWithRolesResponse[]> GetUsersAsync() =>
+        await GetAsync<UserWithRolesResponse[]>("api/users") ?? [];
+
+    public async Task<UserRoleAssignmentResponse?> AssignRoleAsync(string userId, AssignRoleRequest request) =>
+        await PostAsync<AssignRoleRequest, UserRoleAssignmentResponse>($"api/users/{userId}/roles", request);
+
+    public async Task RevokeRoleAsync(string userId, Guid assignmentId) =>
+        await DeleteAsync($"api/users/{userId}/roles/{assignmentId}");
+
     private async Task<T?> GetAsync<T>(string url)
     {
         var response = await _http.GetAsync(url);
@@ -130,6 +159,9 @@ public sealed class ApiClient
             _nav.NavigateTo("/login", forceLoad: true);
             return default;
         }
+
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            throw new ApiForbiddenException();
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>();
@@ -145,6 +177,7 @@ public sealed class ApiClient
             return default;
         }
 
+        await ThrowIfClientErrorAsync(response);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength is 0) return default;
         var payload = await response.Content.ReadAsStringAsync();
@@ -163,6 +196,7 @@ public sealed class ApiClient
             return;
         }
 
+        await ThrowIfClientErrorAsync(response);
         response.EnsureSuccessStatusCode();
     }
 
@@ -284,6 +318,7 @@ public sealed class ApiClient
             return default;
         }
 
+        await ThrowIfClientErrorAsync(response);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TRes>();
     }
@@ -298,6 +333,46 @@ public sealed class ApiClient
             return;
         }
 
+        await ThrowIfClientErrorAsync(response);
         response.EnsureSuccessStatusCode();
+    }
+
+    private static async Task ThrowIfClientErrorAsync(HttpResponseMessage response)
+    {
+        if (response.StatusCode is not (HttpStatusCode.BadRequest
+            or HttpStatusCode.Conflict
+            or HttpStatusCode.Forbidden
+            or HttpStatusCode.NotFound))
+            return;
+
+        var body = await response.Content.ReadAsStringAsync();
+        var message = ExtractMessage(body) ?? response.ReasonPhrase ?? "Request failed.";
+
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            throw new ApiForbiddenException(message);
+
+        throw new ApiException(response.StatusCode, message);
+    }
+
+    private static string? ExtractMessage(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind == System.Text.Json.JsonValueKind.String)
+                return root.GetString();
+            foreach (var prop in new[] { "error", "detail", "title", "message" })
+                if (root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+                    return v.GetString();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return body;
+        }
+
+        return null;
     }
 }

@@ -25,6 +25,9 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
     public DbSet<CheckerAssignmentOverrideEntity> CheckerAssignmentOverrides => Set<CheckerAssignmentOverrideEntity>();
     public DbSet<ProbeAssignmentMetricEntity> ProbeAssignmentMetrics => Set<ProbeAssignmentMetricEntity>();
     public DbSet<ExecutorNodeEntity> ExecutorNodes => Set<ExecutorNodeEntity>();
+    public DbSet<RoleEntity> MoneRoles => Set<RoleEntity>();
+    public DbSet<RolePermissionEntity> RolePermissions => Set<RolePermissionEntity>();
+    public DbSet<UserRoleAssignmentEntity> UserRoleAssignments => Set<UserRoleAssignmentEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -252,6 +255,44 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.HasOne(x => x.Host).WithMany().HasForeignKey(x => x.HostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.CheckerAssignment).WithMany().HasForeignKey(x => x.CheckerAssignmentId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.HostId, x.CheckerAssignmentId }).IsUnique();
+        });
+
+        modelBuilder.Entity<RoleEntity>(e =>
+        {
+            e.ToTable("mone_roles");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(128);
+            e.Property(x => x.Description).HasMaxLength(512);
+            e.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<RolePermissionEntity>(e =>
+        {
+            e.ToTable("mone_role_permissions");
+            e.HasKey(x => new { x.RoleId, x.Resource });
+            e.Property(x => x.Resource).HasConversion<string>().HasMaxLength(64);
+            e.Property(x => x.Level).HasConversion<string>().HasMaxLength(32);
+            e.HasOne(x => x.Role)
+                .WithMany(r => r.Permissions)
+                .HasForeignKey(x => x.RoleId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserRoleAssignmentEntity>(e =>
+        {
+            e.ToTable("mone_user_role_assignments");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.UserId).IsRequired();
+            e.Property(x => x.ScopeType).HasConversion<string>().HasMaxLength(32);
+            e.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Role)
+                .WithMany(r => r.Assignments)
+                .HasForeignKey(x => x.RoleId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.UserId, x.RoleId, x.ScopeType, x.ScopeId }).IsUnique();
         });
     }
 }

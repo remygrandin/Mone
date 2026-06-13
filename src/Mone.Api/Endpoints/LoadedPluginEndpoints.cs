@@ -1,13 +1,18 @@
 using Mone.Api.Models;
 using Mone.PluginEngine;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class LoadedPluginEndpoints
 {
     public static void MapLoadedPluginEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/loaded-plugins").RequireAuthorization();
+        var group = app.MapGroup("/api/loaded-plugins")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Plugins);
 
         group.MapGet("/", (PluginEngine.PluginEngine engine) =>
         {

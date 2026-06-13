@@ -3,6 +3,9 @@ using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class AssignmentOverrideEndpoints
@@ -48,7 +51,7 @@ public static class AssignmentOverrideEndpoints
 
             await db.SaveChangesAsync();
             return Results.Ok(ToProbeResponse(existing));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
 
         app.MapDelete("/api/hosts/{hostId:guid}/overrides/probes/{assignmentId:guid}", async (
             Guid hostId, Guid assignmentId, MoneDbContext db) =>
@@ -61,7 +64,7 @@ public static class AssignmentOverrideEndpoints
             db.ProbeAssignmentOverrides.Remove(existing);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
 
         app.MapPut("/api/hosts/{hostId:guid}/overrides/checkers/{assignmentId:guid}", async (
             Guid hostId, Guid assignmentId, UpsertOverrideRequest request, MoneDbContext db) =>
@@ -102,7 +105,7 @@ public static class AssignmentOverrideEndpoints
 
             await db.SaveChangesAsync();
             return Results.Ok(ToCheckerResponse(existing));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
 
         app.MapDelete("/api/hosts/{hostId:guid}/overrides/checkers/{assignmentId:guid}", async (
             Guid hostId, Guid assignmentId, MoneDbContext db) =>
@@ -115,7 +118,7 @@ public static class AssignmentOverrideEndpoints
             db.CheckerAssignmentOverrides.Remove(existing);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
 
         app.MapGet("/api/hosts/{hostId:guid}/overrides", async (Guid hostId, MoneDbContext db) =>
         {
@@ -135,7 +138,7 @@ public static class AssignmentOverrideEndpoints
                 .ToList();
 
             return Results.Ok(new { probes = probeOverrides, checkers = checkerOverrides });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
     }
 
     private static OverrideResponse ToProbeResponse(ProbeAssignmentOverrideEntity e) => new()

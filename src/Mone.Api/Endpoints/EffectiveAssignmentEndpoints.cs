@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Services;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class EffectiveAssignmentEndpoints
@@ -17,6 +20,6 @@ public static class EffectiveAssignmentEndpoints
             var checkers = await resolver.GetEffectiveCheckerAssignmentsAsync(hostId);
 
             return Results.Ok(new { probes, checkers });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Monitoring);
     }
 }

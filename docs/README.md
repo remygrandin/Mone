@@ -9,6 +9,8 @@ Documentation for the Mone monitoring platform. Start with the
 | [deployment.md](deployment.md) | Running Mone: single-host Docker Compose, production hardening, auth providers, scaling, backups, and upgrades. |
 | [configuration.md](configuration.md) | Full environment-variable reference for every service. |
 | [user-guide.md](user-guide.md) | Using the dashboard: hosts, groups, probe/checker assignments, notifications, and inheritance. |
+| [authorization.md](authorization.md) | Access control: users, roles, permissions, scoped assignments, effective-level resolution, and lockout protection. |
+| [api-reference.md](api-reference.md) | Complete HTTP API reference for every endpoint, with the permission each one requires. |
 | [remote-executors.md](remote-executors.md) | Deploying additional Probe Executors / Checker Engines on other hosts, node identity, and binding work to nodes. |
 
 For the catalogue of bundled plugins and their parameters, see the

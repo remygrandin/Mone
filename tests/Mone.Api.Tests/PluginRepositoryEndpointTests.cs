@@ -556,6 +556,7 @@ public class PluginRepositoryEndpointTests
         var client = factory.CreateClient();
 
         await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, "ValidPass1!"));
+        await _fixture.GrantSuperAdminAsync(email);
         var loginResp = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "ValidPass1!"));
         var token = await loginResp.Content.ReadFromJsonAsync<TokenResponse>();
         client.DefaultRequestHeaders.Authorization =

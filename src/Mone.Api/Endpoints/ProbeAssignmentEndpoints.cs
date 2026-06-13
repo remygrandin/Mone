@@ -5,13 +5,18 @@ using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 using NATS.Client.JetStream;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class ProbeAssignmentEndpoints
 {
     public static void MapProbeAssignmentEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/hosts/{hostId:guid}/probes").RequireAuthorization();
+        var group = app.MapGroup("/api/hosts/{hostId:guid}/probes")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Assignments);
 
         group.MapGet("/", async (Guid hostId, MoneDbContext db) =>
         {

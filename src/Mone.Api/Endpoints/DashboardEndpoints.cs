@@ -3,13 +3,17 @@ using Mone.Api.Models;
 using Mone.Contracts.Models;
 using Mone.Infrastructure.Data;
 
+using Mone.Api.Authorization;
+
 namespace Mone.Api.Endpoints;
 
 public static class DashboardEndpoints
 {
     public static void MapDashboardEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/dashboard").RequireAuthorization();
+        var group = app.MapGroup("/api/dashboard")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Monitoring);
 
         group.MapGet("/summary", async (MoneDbContext db) =>
         {

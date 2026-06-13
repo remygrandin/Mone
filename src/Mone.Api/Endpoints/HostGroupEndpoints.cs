@@ -4,13 +4,18 @@ using Mone.Api.Services;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class HostGroupEndpoints
 {
     public static void MapHostGroupEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/host-groups").RequireAuthorization();
+        var group = app.MapGroup("/api/host-groups")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Groups);
 
         group.MapGet("/", async (MoneDbContext db) =>
         {

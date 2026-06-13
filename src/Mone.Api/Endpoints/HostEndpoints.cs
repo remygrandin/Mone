@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Mone.Api.Authorization;
 using Mone.Api.Models;
+using Mone.Contracts.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
@@ -9,7 +11,9 @@ public static class HostEndpoints
 {
     public static void MapHostEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/hosts").RequireAuthorization();
+        var group = app.MapGroup("/api/hosts")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Hosts);
 
         group.MapGet("/", async (string? tags, MoneDbContext db) =>
         {

@@ -7,14 +7,21 @@ using Mone.Messaging;
 using Mone.Messaging.Messages;
 using NATS.Client.Core;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class PluginRepositoryEndpoints
 {
     public static void MapPluginRepositoryEndpoints(this WebApplication app)
     {
-        var repos = app.MapGroup("/api/plugin-repos").RequireAuthorization();
-        var plugins = app.MapGroup("/api/plugins").RequireAuthorization();
+        var repos = app.MapGroup("/api/plugin-repos")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Plugins);
+        var plugins = app.MapGroup("/api/plugins")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Plugins);
 
         repos.MapPost("/", async (AddRepositoryRequest request, MoneDbContext db, IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory) =>
         {

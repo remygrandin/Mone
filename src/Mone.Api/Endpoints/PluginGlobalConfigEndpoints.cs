@@ -2,6 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class PluginGlobalConfigEndpoints
@@ -11,7 +14,9 @@ public static class PluginGlobalConfigEndpoints
 
     public static void MapPluginGlobalConfigEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/plugins/{pluginId}/global-config").RequireAuthorization();
+        var group = app.MapGroup("/api/plugins/{pluginId}/global-config")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Plugins);
 
         group.MapGet("/", async (string pluginId, MoneDbContext db) =>
         {

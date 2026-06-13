@@ -7,6 +7,8 @@ using Mone.Messaging.Messages;
 using Microsoft.EntityFrameworkCore;
 using NATS.Client.JetStream;
 
+using Mone.Api.Authorization;
+
 namespace Mone.Api.Endpoints;
 
 public static class ProbeTriggerEndpoints
@@ -53,6 +55,6 @@ public static class ProbeTriggerEndpoints
                 request.ProbePluginId, hostId);
 
             return Results.Accepted(value: new { status = "triggered", probePluginId = request.ProbePluginId, hostId });
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
     }
 }

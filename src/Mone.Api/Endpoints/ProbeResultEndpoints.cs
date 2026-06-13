@@ -3,13 +3,18 @@ using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Services;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class ProbeResultEndpoints
 {
     public static void MapProbeResultEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/hosts/{hostId:guid}/results").RequireAuthorization();
+        var group = app.MapGroup("/api/hosts/{hostId:guid}/results")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Monitoring);
 
         group.MapGet("/", async (Guid hostId, UtcQueryTime? from, UtcQueryTime? to, string? probeId, MoneDbContext db) =>
         {

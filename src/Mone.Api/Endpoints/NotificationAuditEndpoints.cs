@@ -3,13 +3,18 @@ using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class NotificationAuditEndpoints
 {
     public static void MapNotificationAuditEndpoints(this WebApplication app)
     {
-        var global = app.MapGroup("/api/notifications").RequireAuthorization();
+        var global = app.MapGroup("/api/notifications")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Monitoring);
 
         global.MapGet("/", async (
             Guid? targetId,
@@ -38,7 +43,9 @@ public static class NotificationAuditEndpoints
             return Results.Ok(results);
         });
 
-        var scoped = app.MapGroup("/api/hosts/{hostId:guid}/notifications").RequireAuthorization();
+        var scoped = app.MapGroup("/api/hosts/{hostId:guid}/notifications")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Monitoring);
 
         scoped.MapGet("/", async (Guid hostId, MoneDbContext db) =>
         {

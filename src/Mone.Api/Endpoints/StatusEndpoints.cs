@@ -2,13 +2,18 @@ using Microsoft.EntityFrameworkCore;
 using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class StatusEndpoints
 {
     public static void MapStatusEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/hosts/{hostId:guid}/status").RequireAuthorization();
+        var group = app.MapGroup("/api/hosts/{hostId:guid}/status")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Monitoring);
 
         group.MapGet("/latest", async (Guid hostId, MoneDbContext db) =>
         {

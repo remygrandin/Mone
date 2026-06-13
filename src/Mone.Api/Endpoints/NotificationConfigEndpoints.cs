@@ -3,13 +3,18 @@ using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class NotificationConfigEndpoints
 {
     public static void MapNotificationConfigEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/notifications/configs").RequireAuthorization();
+        var group = app.MapGroup("/api/notifications/configs")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Notifications);
 
         group.MapGet("/", async (MoneDbContext db) =>
         {

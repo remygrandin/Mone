@@ -5,6 +5,8 @@ using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 using Mone.Infrastructure.Services;
 
+using Mone.Api.Authorization;
+
 namespace Mone.Api.Endpoints;
 
 public static class ExecutorNodeEndpoints
@@ -131,7 +133,9 @@ public static class ExecutorNodeEndpoints
         });
 
         // Browser-facing routes: require user auth.
-        var admin = app.MapGroup("/api/executor-nodes").RequireAuthorization();
+        var admin = app.MapGroup("/api/executor-nodes")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.ExecutorNodes);
 
         admin.MapGet("/", async (MoneDbContext db) =>
         {

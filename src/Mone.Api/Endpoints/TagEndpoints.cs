@@ -3,13 +3,18 @@ using Mone.Api.Models;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class TagEndpoints
 {
     public static void MapTagEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/tags").RequireAuthorization();
+        var group = app.MapGroup("/api/tags")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.Tags);
 
         group.MapGet("/", async (MoneDbContext db) =>
         {

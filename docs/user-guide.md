@@ -42,6 +42,10 @@ The left sidebar is the whole app:
 | **Nodes** | View registered executors (local and remote) and their health. |
 | **Plugins** | See loaded plugins and manage external plugin repositories. |
 | **Housekeeping** | Maintenance and data-retention tasks. |
+| **Roles / Users** | Access control (admins only): define roles and assign them to users at a scope. See [authorization.md](authorization.md). |
+
+Menu items only appear for resources you can access — the sidebar reflects your
+permissions, so a read-only or scoped user sees a smaller menu.
 
 ## Adding a host
 

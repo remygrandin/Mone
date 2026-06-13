@@ -3,6 +3,9 @@ using Mone.Api.Models;
 using Mone.Api.Services;
 using Mone.Infrastructure.Data;
 
+using Mone.Api.Authorization;
+using Mone.Contracts.Models;
+
 namespace Mone.Api.Endpoints;
 
 public static class HousekeepingEndpoints
@@ -16,7 +19,9 @@ public static class HousekeepingEndpoints
 
     public static void MapHousekeepingEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/housekeeping").RequireAuthorization();
+        var group = app.MapGroup("/api/housekeeping")
+            .RequireAuthorization()
+            .RequirePermission(PermissionResource.System);
 
         group.MapGet("/db-size", async (MoneDbContext db) =>
             Results.Ok(await GetDbSizeAsync(db)));
