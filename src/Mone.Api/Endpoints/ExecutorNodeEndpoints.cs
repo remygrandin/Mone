@@ -18,7 +18,8 @@ public static class ExecutorNodeEndpoints
     public static void MapExecutorNodeEndpoints(this WebApplication app)
     {
         // Node-facing routes (unattended services): gated by optional shared secret, not user auth.
-        var nodes = app.MapGroup("/api/executor-nodes");
+        var nodes = app.MapGroup("/api/executor-nodes")
+            .WithTags("Executor Nodes");
 
         nodes.MapPost("/register", async (
             RegisterExecutorNodeRequest request,
@@ -27,7 +28,7 @@ public static class ExecutorNodeEndpoints
             IConfiguration config) =>
         {
             if (!IsNodeTokenValid(http, config))
-                return Results.Unauthorized();
+                return Results.Problem("Invalid node token.", statusCode: StatusCodes.Status401Unauthorized);
 
             var now = DateTimeOffset.UtcNow;
             // Explicit Mone:Node:Address wins; otherwise advertise the source IP the API observed
@@ -61,8 +62,12 @@ public static class ExecutorNodeEndpoints
             }
 
             await db.SaveChangesAsync();
-            return Results.Ok(new { id = node.Id });
-        });
+            return Results.Ok(new ExecutorNodeRegistrationResponse(node.Id));
+        })
+        .WithName("RegisterExecutorNode")
+        .WithSummary("Register or update an executor node. Authenticated by the optional shared node token.")
+        .Produces<ExecutorNodeRegistrationResponse>()
+        .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         nodes.MapPost("/{id:guid}/heartbeat", async (
             Guid id,
@@ -72,10 +77,10 @@ public static class ExecutorNodeEndpoints
             IConfiguration config) =>
         {
             if (!IsNodeTokenValid(http, config))
-                return Results.Unauthorized();
+                return Results.Problem("Invalid node token.", statusCode: StatusCodes.Status401Unauthorized);
 
             var node = await db.ExecutorNodes.FirstOrDefaultAsync(n => n.Id == id);
-            if (node is null) return Results.NotFound();
+            if (node is null) return Results.Problem("Executor node not found.", statusCode: StatusCodes.Status404NotFound);
 
             node.LastHeartbeatAt = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(request.Version))
@@ -87,7 +92,12 @@ public static class ExecutorNodeEndpoints
 
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .WithName("ExecutorNodeHeartbeat")
+        .WithSummary("Record an executor node heartbeat, refreshing its last-seen time and version.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Config pull for remote executors: returns fully-resolved probe specs (inheritance +
         // override + global config merge done here) so the executor needs neither the resolver
@@ -101,7 +111,7 @@ public static class ExecutorNodeEndpoints
             IConfiguration config) =>
         {
             if (!IsNodeTokenValid(http, config))
-                return Results.Unauthorized();
+                return Results.Problem("Invalid node token.", statusCode: StatusCodes.Status401Unauthorized);
 
             var logger = loggerFactory.CreateLogger("ExecutorNodeProbeAssignments");
 
@@ -138,10 +148,15 @@ public static class ExecutorNodeEndpoints
             }
 
             return Results.Ok(specs);
-        });
+        })
+        .WithName("GetExecutorNodeProbeAssignments")
+        .WithSummary("Return fully-resolved probe specs an executor node should run (inheritance, override, and global config already merged).")
+        .Produces<IEnumerable<ProbeSpec>>()
+        .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         // Browser-facing routes: require user auth.
         var admin = app.MapGroup("/api/executor-nodes")
+            .WithTags("Executor Nodes")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.ExecutorNodes);
 
@@ -154,27 +169,38 @@ public static class ExecutorNodeEndpoints
                 .Select(n => ToResponse(n, now))
                 .ToList();
             return Results.Ok(response);
-        });
+        })
+        .WithName("ListExecutorNodes")
+        .WithSummary("List all registered executor nodes with computed health status.")
+        .Produces<IEnumerable<ExecutorNodeResponse>>();
 
         admin.MapPut("/{id:guid}", async (Guid id, RenameExecutorNodeRequest request, MoneDbContext db) =>
         {
             var node = await db.ExecutorNodes.FirstOrDefaultAsync(n => n.Id == id);
-            if (node is null) return Results.NotFound();
+            if (node is null) return Results.Problem("Executor node not found.", statusCode: StatusCodes.Status404NotFound);
 
             node.Name = request.Name;
             await db.SaveChangesAsync();
             return Results.Ok(ToResponse(node, DateTimeOffset.UtcNow));
-        });
+        })
+        .WithName("RenameExecutorNode")
+        .WithSummary("Rename an executor node. Returns 404 if the node does not exist.")
+        .Produces<ExecutorNodeResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         admin.MapDelete("/{id:guid}", async (Guid id, MoneDbContext db) =>
         {
             var node = await db.ExecutorNodes.FirstOrDefaultAsync(n => n.Id == id);
-            if (node is null) return Results.NotFound();
+            if (node is null) return Results.Problem("Executor node not found.", statusCode: StatusCodes.Status404NotFound);
 
             db.ExecutorNodes.Remove(node);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .WithName("DeleteExecutorNode")
+        .WithSummary("Delete an executor node by id. Returns 404 if the node does not exist.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     // Explicit advertised address wins; otherwise the IP the connection arrived from.

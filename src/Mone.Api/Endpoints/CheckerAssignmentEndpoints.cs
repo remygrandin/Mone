@@ -14,13 +14,14 @@ public static class CheckerAssignmentEndpoints
     public static void MapCheckerAssignmentEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/hosts/{hostId:guid}/checkers")
+            .WithTags("Assignments")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Assignments);
 
         group.MapGet("/", async (Guid hostId, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var assignments = await db.CheckerAssignments
                 .Where(c => c.HostId == hostId)
@@ -28,16 +29,20 @@ public static class CheckerAssignmentEndpoints
                 .ToListAsync();
 
             return Results.Ok(assignments);
-        });
+        })
+        .WithName("ListCheckerAssignments")
+        .WithSummary("List checker assignments for a host. Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<CheckerAssignmentResponse>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/", async (Guid hostId, CreateCheckerAssignmentRequest request, MoneDbContext db, CheckerAssignmentNameValidator nameValidator, CancellationToken ct) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId, ct))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var nameCheck = await nameValidator.ValidateForHostAsync(hostId, request.Name, excludeAssignmentId: null, ct);
             if (!nameCheck.Ok)
-                return Results.BadRequest(new { error = nameCheck.Error });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = new[] { nameCheck.Error ?? "Invalid name." } });
 
             var assignment = new CheckerAssignmentEntity
             {
@@ -56,18 +61,23 @@ public static class CheckerAssignmentEndpoints
 
             var response = new CheckerAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.CheckerPluginId, assignment.Name, assignment.NameSnakeCase, assignment.ConfigJson, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Created($"/api/hosts/{hostId}/checkers/{assignment.Id}", response);
-        });
+        })
+        .WithName("CreateCheckerAssignment")
+        .WithSummary("Create a checker assignment on a host. Returns 404 if the host is missing, 400 if the name is invalid.")
+        .Produces<CheckerAssignmentResponse>(StatusCodes.Status201Created)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesValidationProblem();
 
         group.MapPut("/{id:guid}", async (Guid hostId, Guid id, UpdateCheckerAssignmentRequest request, MoneDbContext db, CheckerAssignmentNameValidator nameValidator, CancellationToken ct) =>
         {
             var assignment = await db.CheckerAssignments
                 .FirstOrDefaultAsync(c => c.Id == id && c.HostId == hostId, ct);
 
-            if (assignment is null) return Results.NotFound();
+            if (assignment is null) return Results.Problem("Checker assignment not found.", statusCode: StatusCodes.Status404NotFound);
 
             var nameCheck = await nameValidator.ValidateForHostAsync(hostId, request.Name, excludeAssignmentId: id, ct);
             if (!nameCheck.Ok)
-                return Results.BadRequest(new { error = nameCheck.Error });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = new[] { nameCheck.Error ?? "Invalid name." } });
 
             assignment.CheckerPluginId = request.CheckerPluginId;
             assignment.Name = nameCheck.Name;
@@ -80,18 +90,27 @@ public static class CheckerAssignmentEndpoints
 
             var response = new CheckerAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.CheckerPluginId, assignment.Name, assignment.NameSnakeCase, assignment.ConfigJson, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Ok(response);
-        });
+        })
+        .WithName("UpdateCheckerAssignment")
+        .WithSummary("Update a checker assignment on a host. Returns 404 if not found, 400 if the name is invalid.")
+        .Produces<CheckerAssignmentResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesValidationProblem();
 
         group.MapDelete("/{id:guid}", async (Guid hostId, Guid id, MoneDbContext db) =>
         {
             var assignment = await db.CheckerAssignments
                 .FirstOrDefaultAsync(c => c.Id == id && c.HostId == hostId);
 
-            if (assignment is null) return Results.NotFound();
+            if (assignment is null) return Results.Problem("Checker assignment not found.", statusCode: StatusCodes.Status404NotFound);
 
             db.CheckerAssignments.Remove(assignment);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .WithName("DeleteCheckerAssignment")
+        .WithSummary("Delete a checker assignment from a host. Returns 404 if the assignment does not exist.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 }

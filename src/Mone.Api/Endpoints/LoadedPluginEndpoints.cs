@@ -11,6 +11,7 @@ public static class LoadedPluginEndpoints
     public static void MapLoadedPluginEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/loaded-plugins")
+            .WithTags("Plugins")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Plugins);
 
@@ -28,6 +29,9 @@ public static class LoadedPluginEndpoints
                 r.Metadata.ConfigManifest)).ToList();
 
             return Results.Ok(response);
-        });
+        })
+        .WithName("ListLoadedPlugins")
+        .WithSummary("List plugins currently loaded in the engine registry.")
+        .Produces<IEnumerable<LoadedPluginResponse>>();
     }
 }

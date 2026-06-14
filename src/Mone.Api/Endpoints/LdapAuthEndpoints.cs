@@ -49,6 +49,7 @@ public static class LdapAuthEndpoints
             return Results.Ok(token);
         })
         .WithName("LdapLogin")
+        .WithSummary("Authenticate against the configured LDAP directory and receive a JWT token. Returns 401 on invalid credentials.")
         .Produces<TokenResponse>()
         .ProducesProblem(StatusCodes.Status401Unauthorized)
         .AllowAnonymous();

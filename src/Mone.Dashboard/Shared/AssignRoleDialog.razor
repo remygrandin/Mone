@@ -1,0 +1,77 @@
+@using Mone.Dashboard.Models
+
+<MudDialog>
+    <TitleContent>Assign Role to @UserEmail</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudSelect T="Guid?" @bind-Value="Model.RoleId" Label="Role" Required="true"
+                       RequiredError="Role is required" Dense="true" Class="mb-2">
+                @foreach (var role in Roles)
+                {
+                    <MudSelectItem T="Guid?" Value="@((Guid?)role.Id)">@role.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="ScopeType" @bind-Value="Model.ScopeType" Label="Scope" Dense="true" Class="mb-2">
+                <MudSelectItem Value="ScopeType.Global">Global</MudSelectItem>
+                <MudSelectItem Value="ScopeType.Group">Group</MudSelectItem>
+                <MudSelectItem Value="ScopeType.Tag">Tag</MudSelectItem>
+            </MudSelect>
+
+            @if (Model.ScopeType == ScopeType.Group)
+            {
+                <MudSelect T="Guid?" @bind-Value="Model.ScopeId" Label="Group" Required="true"
+                           RequiredError="Group is required" Dense="true">
+                    @foreach (var g in Groups)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)g.Id)">@g.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else if (Model.ScopeType == ScopeType.Tag)
+            {
+                <MudSelect T="Guid?" @bind-Value="Model.ScopeId" Label="Tag" Required="true"
+                           RequiredError="Tag is required" Dense="true">
+                    @foreach (var t in Tags)
+                    {
+                        <MudSelectItem T="Guid?" Value="@((Guid?)t.Id)">@t.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Assign</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public FormModel Model { get; set; } = new();
+    [Parameter] public string? UserEmail { get; set; }
+    [Parameter] public RoleResponse[] Roles { get; set; } = [];
+    [Parameter] public HostGroupResponse[] Groups { get; set; } = [];
+    [Parameter] public TagResponse[] Tags { get; set; } = [];
+
+    private MudForm _form = null!;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        var scopeId = Model.ScopeType == ScopeType.Global ? null : Model.ScopeId;
+        MudDialog.Close(DialogResult.Ok(new AssignRoleRequest(Model.RoleId!.Value, Model.ScopeType, scopeId)));
+    }
+
+    public sealed class FormModel
+    {
+        public Guid? RoleId { get; set; }
+        public ScopeType ScopeType { get; set; } = ScopeType.Global;
+        public Guid? ScopeId { get; set; }
+    }
+}

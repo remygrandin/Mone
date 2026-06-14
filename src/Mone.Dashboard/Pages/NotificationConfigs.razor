@@ -8,21 +8,12 @@
 
 <MudText Typo="Typo.h4" Class="mb-4">Notification Configurations</MudText>
 
-@if (_loading)
-{
-    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
-}
-else if (_configs.Length == 0)
-{
-    <MudPaper Class="pa-4 mb-4 d-flex flex-column align-center">
-        <MudIcon Icon="@Icons.Material.Filled.NotificationsNone" Size="Size.Large" Class="mud-text-secondary mb-2" />
-        <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">No notification configs yet</MudText>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenCreateDialog">Add Configuration</MudButton>
-    </MudPaper>
-}
-else
-{
+<StateView Loading="_loading" Error="@_error" IsEmpty="@(_configs.Length == 0)"
+           EmptyText="No notification configs yet"
+           EmptyIcon="@Icons.Material.Filled.NotificationsNone"
+           EmptyActionText="Add Configuration"
+           EmptyActionIcon="@Icons.Material.Filled.Add"
+           OnEmptyAction="OpenCreateDialog">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                OnClick="OpenCreateDialog" Class="mb-4">Add Configuration</MudButton>
 
@@ -47,10 +38,11 @@ else
             </TemplateColumn>
         </Columns>
     </MudDataGrid>
-}
+</StateView>
 
 @code {
     private bool _loading = true;
+    private string? _error;
     private NotificationConfigResponse[] _configs = [];
 
     protected override async Task OnInitializedAsync()
@@ -61,18 +53,25 @@ else
     private async Task LoadConfigsAsync()
     {
         _loading = true;
+        _error = null;
         StateHasChanged();
 
         try
         {
             _configs = await Api.GetNotificationConfigsAsync();
         }
-        catch (Exception ex)
+        catch (ApiException ax)
         {
-            Snackbar.Add($"Failed to load configs: {ex.Message}", Severity.Error);
+            _error = ax.Message;
         }
-
-        _loading = false;
+        catch (Exception)
+        {
+            _error = "Unable to load notification configs. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private async Task OpenCreateDialog()
@@ -91,9 +90,9 @@ else
                 Snackbar.Add("Configuration created", Severity.Success);
                 await LoadConfigsAsync();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to create: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -125,9 +124,9 @@ else
                 Snackbar.Add("Configuration updated", Severity.Success);
                 await LoadConfigsAsync();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to update: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -152,9 +151,9 @@ else
                 Snackbar.Add("Configuration deleted", Severity.Success);
                 await LoadConfigsAsync();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to delete: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }

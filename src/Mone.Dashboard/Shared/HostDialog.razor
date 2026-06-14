@@ -14,7 +14,11 @@
 
             <MudSwitch @bind-Value="Model.Enabled" Label="Enabled" Color="Color.Primary" Class="mb-3" />
 
-            @if (_tags.Length > 0)
+            @if (!string.IsNullOrWhiteSpace(_tagsError))
+            {
+                <ErrorAlert Message="@_tagsError" />
+            }
+            else if (_tags.Length > 0)
             {
                 <MudText Typo="Typo.body2" Class="mb-1">Tags</MudText>
                 <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
@@ -46,11 +50,24 @@
 
     private MudForm _form = null!;
     private TagResponse[] _tags = [];
+    private string? _tagsError;
     private IReadOnlyCollection<Guid> _selectedTagIds = Array.Empty<Guid>();
 
     protected override async Task OnInitializedAsync()
     {
-        _tags = await Api.GetTagsAsync();
+        try
+        {
+            _tags = await Api.GetTagsAsync();
+        }
+        catch (ApiException ax)
+        {
+            _tagsError = ax.Message;
+        }
+        catch (Exception)
+        {
+            _tagsError = "Unable to load tags. Please try again.";
+        }
+
         if (Model.TagIds is { Length: > 0 })
             _selectedTagIds = Model.TagIds.ToList();
     }

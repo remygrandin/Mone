@@ -15,6 +15,7 @@ public static class PluginGlobalConfigEndpoints
     public static void MapPluginGlobalConfigEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/plugins/{pluginId}/global-config")
+            .WithTags("Plugins")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Plugins);
 
@@ -27,7 +28,10 @@ public static class PluginGlobalConfigEndpoints
                 return Results.Ok(new PluginGlobalConfigResponse(pluginId, "{}", DateTime.UtcNow));
 
             return Results.Ok(new PluginGlobalConfigResponse(config.PluginId, config.ConfigJson, config.UpdatedAt));
-        });
+        })
+        .WithName("GetPluginGlobalConfig")
+        .WithSummary("Get a plugin's global config, synthesizing an empty default when none is stored.")
+        .Produces<PluginGlobalConfigResponse>();
 
         group.MapPut("/", async (string pluginId, UpsertPluginGlobalConfigRequest request, MoneDbContext db) =>
         {
@@ -54,6 +58,9 @@ public static class PluginGlobalConfigEndpoints
             await db.SaveChangesAsync();
 
             return Results.Ok(new PluginGlobalConfigResponse(config.PluginId, config.ConfigJson, config.UpdatedAt));
-        });
+        })
+        .WithName("UpsertPluginGlobalConfig")
+        .WithSummary("Create or replace a plugin's global config JSON.")
+        .Produces<PluginGlobalConfigResponse>();
     }
 }

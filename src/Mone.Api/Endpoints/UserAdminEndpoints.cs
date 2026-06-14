@@ -12,6 +12,7 @@ public static class UserAdminEndpoints
     public static void MapUserAdminEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/users")
+            .WithTags("Users")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Administration);
 
@@ -49,38 +50,41 @@ public static class UserAdminEndpoints
             }).ToList();
 
             return Results.Ok(response);
-        });
+        })
+        .WithName("ListUsers")
+        .WithSummary("List all users with their role assignments and resolved scope names.")
+        .Produces<IEnumerable<UserWithRolesResponse>>();
 
         group.MapPost("/{id}/roles", async (string id, AssignRoleRequest request, MoneDbContext db) =>
         {
             if (!await db.Users.AnyAsync(u => u.Id == id))
-                return Results.NotFound("User not found.");
+                return Results.Problem("User not found.", statusCode: StatusCodes.Status404NotFound);
 
             var role = await db.MoneRoles.FirstOrDefaultAsync(r => r.Id == request.RoleId);
-            if (role is null) return Results.BadRequest("Role not found.");
+            if (role is null) return Results.ValidationProblem(new Dictionary<string, string[]> { ["RoleId"] = new[] { "Role not found." } });
 
             if (request.ScopeType == ScopeType.Global)
             {
                 if (request.ScopeId is not null)
-                    return Results.BadRequest("Global scope must not specify a scope id.");
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["ScopeId"] = new[] { "Global scope must not specify a scope id." } });
             }
             else
             {
                 if (request.ScopeId is not { } scopeId)
-                    return Results.BadRequest("A scope id is required for Tag and Group scopes.");
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["ScopeId"] = new[] { "A scope id is required for Tag and Group scopes." } });
 
                 var scopeExists = request.ScopeType == ScopeType.Group
                     ? await db.HostGroups.AnyAsync(g => g.Id == scopeId)
                     : await db.Tags.AnyAsync(t => t.Id == scopeId);
                 if (!scopeExists)
-                    return Results.BadRequest($"{request.ScopeType} scope target not found.");
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["ScopeId"] = new[] { $"{request.ScopeType} scope target not found." } });
             }
 
             var duplicate = await db.UserRoleAssignments.AnyAsync(a =>
                 a.UserId == id && a.RoleId == request.RoleId &&
                 a.ScopeType == request.ScopeType && a.ScopeId == request.ScopeId);
             if (duplicate)
-                return Results.Conflict("This role is already assigned to the user at this scope.");
+                return Results.Problem("This role is already assigned to the user at this scope.", statusCode: StatusCodes.Status409Conflict);
 
             var assignment = new UserRoleAssignmentEntity
             {
@@ -97,23 +101,35 @@ public static class UserAdminEndpoints
             return Results.Created($"/api/users/{id}/roles/{assignment.Id}", new UserRoleAssignmentResponse(
                 assignment.Id, role.Id, role.Name, assignment.ScopeType, assignment.ScopeId,
                 null, assignment.CreatedAt));
-        });
+        })
+        .WithName("AssignUserRole")
+        .WithSummary("Assign a role to a user at a Global, Group, or Tag scope. Returns 409 if the assignment already exists.")
+        .Produces<UserRoleAssignmentResponse>(StatusCodes.Status201Created)
+        .ProducesValidationProblem()
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/{id}/roles/{assignmentId:guid}", async (string id, Guid assignmentId, MoneDbContext db) =>
         {
             var assignment = await db.UserRoleAssignments
                 .FirstOrDefaultAsync(a => a.Id == assignmentId && a.UserId == id);
-            if (assignment is null) return Results.NotFound();
+            if (assignment is null) return Results.Problem("Role assignment not found.", statusCode: StatusCodes.Status404NotFound);
 
             if (await IsLastGlobalAdminAssignmentAsync(db, assignment))
-                return Results.Conflict(
+                return Results.Problem(
                     "Cannot revoke the last Global assignment that grants Administration: Manage. " +
-                    "Assign it to another user first to avoid locking yourself out.");
+                    "Assign it to another user first to avoid locking yourself out.",
+                    statusCode: StatusCodes.Status409Conflict);
 
             db.UserRoleAssignments.Remove(assignment);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .WithName("RevokeUserRole")
+        .WithSummary("Revoke a user's role assignment. Returns 404 if not found, 409 if it is the last Global admin grant.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
     }
 
     /// <summary>

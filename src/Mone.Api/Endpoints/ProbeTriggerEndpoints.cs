@@ -26,20 +26,29 @@ public static class ProbeTriggerEndpoints
         {
             var host = await db.Hosts.FirstOrDefaultAsync(h => h.Id == hostId);
             if (host is null)
-                return Results.NotFound(new { error = "Host not found." });
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var plugin = pluginEngine.Registry.Get(request.ProbePluginId);
             if (plugin is null)
-                return Results.BadRequest(new { error = $"Plugin '{request.ProbePluginId}' is not loaded." });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["probePluginId"] = new[] { $"Plugin '{request.ProbePluginId}' is not loaded." }
+                });
 
             if (plugin.Metadata.ProbeMode == ProbeMode.Passive)
-                return Results.BadRequest(new { error = "Passive probes cannot be triggered manually." });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["probePluginId"] = new[] { "Passive probes cannot be triggered manually." }
+                });
 
             var effectiveAssignments = await resolver.GetEffectiveProbeAssignmentsAsync(hostId);
             var assignment = effectiveAssignments.FirstOrDefault(a => a.ProbePluginId == request.ProbePluginId);
 
             if (assignment is null)
-                return Results.BadRequest(new { error = $"No active assignment for '{request.ProbePluginId}' on this host." });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["probePluginId"] = new[] { $"No active assignment for '{request.ProbePluginId}' on this host." }
+                });
 
             var message = new ProbeTriggerMessage(
                 hostId,
@@ -54,7 +63,14 @@ public static class ProbeTriggerEndpoints
             logger.LogInformation("Manual probe trigger published for {ProbePluginId} on host {HostId}",
                 request.ProbePluginId, hostId);
 
-            return Results.Accepted(value: new { status = "triggered", probePluginId = request.ProbePluginId, hostId });
-        }).RequireAuthorization().RequirePermission(PermissionResource.Assignments);
+            return Results.Accepted(value: new ProbeTriggerResponse("triggered", request.ProbePluginId, hostId));
+        })
+        .WithTags("Probes")
+        .WithName("TriggerProbe")
+        .WithSummary("Manually trigger an active probe on a host. Returns 202 on publish, 404 if the host is missing, or a validation problem if the plugin is not loaded, passive, or not assigned.")
+        .Produces<ProbeTriggerResponse>(StatusCodes.Status202Accepted)
+        .ProducesValidationProblem()
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .RequireAuthorization().RequirePermission(PermissionResource.Assignments);
     }
 }

@@ -8,11 +8,11 @@
 
 @if (_loading)
 {
-    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+    <LoadingIndicator />
 }
 else if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+    <ErrorAlert Message="@_error" />
 }
 else if (_summary is not null)
 {
@@ -79,9 +79,13 @@ else if (_summary is not null)
         {
             _summary = await Api.GetDashboardSummaryAsync();
         }
-        catch (Exception ex)
+        catch (ApiException ax)
         {
-            _error = $"Failed to load dashboard summary: {ex.Message}";
+            _error = ax.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Unable to load the dashboard summary. Please try again.";
         }
         _loading = false;
     }

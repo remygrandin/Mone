@@ -20,11 +20,15 @@ public static class HousekeepingEndpoints
     public static void MapHousekeepingEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/housekeeping")
+            .WithTags("Housekeeping")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.System);
 
         group.MapGet("/db-size", async (MoneDbContext db) =>
-            Results.Ok(await GetDbSizeAsync(db)));
+            Results.Ok(await GetDbSizeAsync(db)))
+            .WithName("GetDbSize")
+            .WithSummary("Report total database size and the largest tables.")
+            .Produces<DbSizeReport>();
 
         group.MapPost("/assess", async (
             MoneDbContext db,
@@ -47,7 +51,10 @@ public static class HousekeepingEndpoints
 
             var categories = await BuildCategoriesAsync(db, installedIds, avgRowBytes);
             return Results.Ok(new HousekeepingReport(dbSize, categories));
-        });
+        })
+        .WithName("AssessHousekeeping")
+        .WithSummary("Assess cleanable data categories (orphaned, aged, and unused rows) with size estimates.")
+        .Produces<HousekeepingReport>();
 
         group.MapPost("/cleanup", async (
             CleanupRequest request,
@@ -69,9 +76,16 @@ public static class HousekeepingEndpoints
             }
             catch (KeyNotFoundException)
             {
-                return Results.BadRequest(new { error = $"Unknown cleanup key '{request.Key}'" });
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["key"] = new[] { $"Unknown cleanup key '{request.Key}'" }
+                });
             }
-        });
+        })
+        .WithName("RunHousekeepingCleanup")
+        .WithSummary("Delete or strip data for a named cleanup key. Returns a validation problem for an unknown key.")
+        .Produces<CleanupResult>()
+        .ProducesValidationProblem();
     }
 
     private static async Task<DbSizeReport> GetDbSizeAsync(MoneDbContext db)

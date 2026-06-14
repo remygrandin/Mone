@@ -15,13 +15,14 @@ public static class ProbeAssignmentEndpoints
     public static void MapProbeAssignmentEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/hosts/{hostId:guid}/probes")
+            .WithTags("Assignments")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Assignments);
 
         group.MapGet("/", async (Guid hostId, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var assignments = await db.ProbeAssignments
                 .Where(p => p.HostId == hostId)
@@ -29,7 +30,11 @@ public static class ProbeAssignmentEndpoints
                 .ToListAsync();
 
             return Results.Ok(assignments);
-        });
+        })
+        .WithName("ListProbeAssignments")
+        .WithSummary("List probe assignments for a host. Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<ProbeAssignmentResponse>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/", async (
             Guid hostId,
@@ -42,11 +47,11 @@ public static class ProbeAssignmentEndpoints
             CancellationToken ct) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId, ct))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var nameCheck = await nameValidator.ValidateForHostAsync(hostId, request.Name, excludeAssignmentId: null, ct);
             if (!nameCheck.Ok)
-                return Results.BadRequest(new { error = nameCheck.Error });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = new[] { nameCheck.Error ?? "Invalid name." } });
 
             var assignment = new ProbeAssignmentEntity
             {
@@ -71,7 +76,12 @@ public static class ProbeAssignmentEndpoints
 
             var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Created($"/api/hosts/{hostId}/probes/{assignment.Id}", response);
-        });
+        })
+        .WithName("CreateProbeAssignment")
+        .WithSummary("Create a probe assignment on a host. Returns 404 if the host is missing, 400 if the name is invalid.")
+        .Produces<ProbeAssignmentResponse>(StatusCodes.Status201Created)
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesValidationProblem();
 
         group.MapPut("/{id:guid}", async (
             Guid hostId,
@@ -87,11 +97,11 @@ public static class ProbeAssignmentEndpoints
             var assignment = await db.ProbeAssignments
                 .FirstOrDefaultAsync(p => p.Id == id && p.HostId == hostId, ct);
 
-            if (assignment is null) return Results.NotFound();
+            if (assignment is null) return Results.Problem("Probe assignment not found.", statusCode: StatusCodes.Status404NotFound);
 
             var nameCheck = await nameValidator.ValidateForHostAsync(hostId, request.Name, excludeAssignmentId: id, ct);
             if (!nameCheck.Ok)
-                return Results.BadRequest(new { error = nameCheck.Error });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = new[] { nameCheck.Error ?? "Invalid name." } });
 
             assignment.ProbePluginId = request.ProbePluginId;
             assignment.Name = nameCheck.Name;
@@ -110,7 +120,12 @@ public static class ProbeAssignmentEndpoints
 
             var response = new ProbeAssignmentResponse(assignment.Id, assignment.HostId, assignment.GroupId, assignment.ProbePluginId, assignment.Name, assignment.NameSnakeCase, assignment.ScheduleCron, assignment.ConfigJson, assignment.TargetAddressOverride, assignment.Enabled, assignment.ExecutorNodeId);
             return Results.Ok(response);
-        });
+        })
+        .WithName("UpdateProbeAssignment")
+        .WithSummary("Update a probe assignment on a host. Returns 404 if not found, 400 if the name is invalid.")
+        .Produces<ProbeAssignmentResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesValidationProblem();
 
         group.MapDelete("/{id:guid}", async (
             Guid hostId,
@@ -123,7 +138,7 @@ public static class ProbeAssignmentEndpoints
             var assignment = await db.ProbeAssignments
                 .FirstOrDefaultAsync(p => p.Id == id && p.HostId == hostId, ct);
 
-            if (assignment is null) return Results.NotFound();
+            if (assignment is null) return Results.Problem("Probe assignment not found.", statusCode: StatusCodes.Status404NotFound);
 
             db.ProbeAssignments.Remove(assignment);
             await db.SaveChangesAsync(ct);
@@ -131,6 +146,10 @@ public static class ProbeAssignmentEndpoints
             await ProbeScheduleNotifier.NotifyChangedAsync(jetStream, "deleted", id, logger, ct);
 
             return Results.NoContent();
-        });
+        })
+        .WithName("DeleteProbeAssignment")
+        .WithSummary("Delete a probe assignment from a host. Returns 404 if the assignment does not exist.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 }

@@ -72,6 +72,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownProxies.Clear();
 });
 
+builder.Services.AddProblemDetails();
+
 builder.Services.AddOpenApi();
 
 builder.Services.AddMoneMessaging(
@@ -182,6 +184,9 @@ _ = Task.Run(async () =>
         catch (Exception ex) { app.Logger.LogWarning(ex, "Initial sync failed for repository {RepositoryId}", id); }
     }
 });
+
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 app.UseForwardedHeaders();
 

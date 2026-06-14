@@ -17,9 +17,11 @@ public static class PluginRepositoryEndpoints
     public static void MapPluginRepositoryEndpoints(this WebApplication app)
     {
         var repos = app.MapGroup("/api/plugin-repos")
+            .WithTags("Plugins")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Plugins);
         var plugins = app.MapGroup("/api/plugins")
+            .WithTags("Plugins")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Plugins);
 
@@ -52,7 +54,10 @@ public static class PluginRepositoryEndpoints
             });
 
             return Results.Created($"/api/plugin-repos/{entity.Id}", ToResponse(entity));
-        });
+        })
+        .WithName("AddPluginRepository")
+        .WithSummary("Register a plugin repository and trigger an initial background sync.")
+        .Produces<PluginRepositoryResponse>(StatusCodes.Status201Created);
 
         repos.MapGet("/", async (MoneDbContext db) =>
         {
@@ -64,7 +69,10 @@ public static class PluginRepositoryEndpoints
                 .ToListAsync();
 
             return Results.Ok(list);
-        });
+        })
+        .WithName("ListPluginRepositories")
+        .WithSummary("List all registered plugin repositories.")
+        .Produces<IEnumerable<PluginRepositoryResponse>>();
 
         repos.MapGet("/{id:guid}", async (Guid id, MoneDbContext db) =>
         {
@@ -75,8 +83,14 @@ public static class PluginRepositoryEndpoints
                     r.Enabled, r.LastSyncedAt, r.LastSyncError, r.CreatedAt))
                 .FirstOrDefaultAsync();
 
-            return repo is null ? Results.NotFound() : Results.Ok(repo);
-        });
+            return repo is null
+                ? Results.Problem("Plugin repository not found.", statusCode: StatusCodes.Status404NotFound)
+                : Results.Ok(repo);
+        })
+        .WithName("GetPluginRepository")
+        .WithSummary("Get a single plugin repository by id. Returns 404 if not found.")
+        .Produces<PluginRepositoryResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         repos.MapDelete("/{id:guid}", async (Guid id, MoneDbContext db) =>
         {
@@ -84,21 +98,29 @@ public static class PluginRepositoryEndpoints
                 .Include(r => r.Manifests)
                 .FirstOrDefaultAsync(r => r.Id == id);
 
-            if (repo is null) return Results.NotFound();
+            if (repo is null) return Results.Problem("Plugin repository not found.", statusCode: StatusCodes.Status404NotFound);
 
             db.PluginRepositories.Remove(repo);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .WithName("DeletePluginRepository")
+        .WithSummary("Delete a plugin repository and its manifests. Returns 404 if not found.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         repos.MapPost("/{id:guid}/sync", async (Guid id, MoneDbContext db, IPluginRepositoryService svc) =>
         {
             var exists = await db.PluginRepositories.AnyAsync(r => r.Id == id);
-            if (!exists) return Results.NotFound();
+            if (!exists) return Results.Problem("Plugin repository not found.", statusCode: StatusCodes.Status404NotFound);
 
             await svc.SyncRepositoryAsync(id);
             return Results.Ok();
-        });
+        })
+        .WithName("SyncPluginRepository")
+        .WithSummary("Sync a single plugin repository by id. Returns 404 if not found.")
+        .Produces(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         repos.MapPost("/sync-all", async (MoneDbContext db, IPluginRepositoryService svc) =>
         {
@@ -110,14 +132,20 @@ public static class PluginRepositoryEndpoints
             foreach (var id in ids)
                 await svc.SyncRepositoryAsync(id);
 
-            return Results.Ok(new { synced = ids.Count });
-        });
+            return Results.Ok(new RepositorySyncAllResponse(ids.Count));
+        })
+        .WithName("SyncAllPluginRepositories")
+        .WithSummary("Sync every enabled plugin repository and report how many were synced.")
+        .Produces<RepositorySyncAllResponse>();
 
         plugins.MapGet("/", async (IPluginRepositoryService svc, IInstalledPluginQuery installed) =>
         {
             var manifests = await svc.GetAvailablePluginsAsync();
             return Results.Ok(BuildCatalog(manifests, installed.List()));
-        });
+        })
+        .WithName("ListPluginCatalog")
+        .WithSummary("List the plugin catalog (available versions merged with installed state).")
+        .Produces<IEnumerable<PluginCatalogResponse>>();
 
         plugins.MapPost("/install", async (
             InstallPluginRequest request,
@@ -141,7 +169,10 @@ public static class PluginRepositoryEndpoints
                 await PublishReloadAsync(nats, loggerFactory, PluginReloadAction.Install, name);
 
             return Results.Ok();
-        });
+        })
+        .WithName("InstallPlugin")
+        .WithSummary("Install a plugin version, reload the engine from disk, and broadcast a reload.")
+        .Produces(StatusCodes.Status200OK);
 
         plugins.MapPost("/uninstall", async (
             UninstallPluginRequest request,
@@ -155,7 +186,10 @@ public static class PluginRepositoryEndpoints
             await svc.UninstallPluginAsync(request.Name);
             await PublishReloadAsync(nats, loggerFactory, PluginReloadAction.Uninstall, request.Name);
             return Results.Ok();
-        });
+        })
+        .WithName("UninstallPlugin")
+        .WithSummary("Unload and uninstall a plugin by name, then broadcast a reload.")
+        .Produces(StatusCodes.Status200OK);
 
         plugins.MapPost("/reload", async (
             Mone.PluginEngine.PluginEngine engine,
@@ -167,7 +201,10 @@ public static class PluginRepositoryEndpoints
             ReloadEngineFromDisk(engine, config);
             await PublishReloadAsync(nats, loggerFactory, PluginReloadAction.ReloadAll, string.Empty);
             return Results.Ok();
-        });
+        })
+        .WithName("ReloadPlugins")
+        .WithSummary("Evict missing assemblies, reload all plugins from disk, and broadcast a reload.")
+        .Produces(StatusCodes.Status200OK);
     }
 
     private static List<PluginCatalogResponse> BuildCatalog(

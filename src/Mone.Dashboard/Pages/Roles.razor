@@ -18,12 +18,12 @@
                            OnClick="StartCreate">New Role</MudButton>
             </MudToolBar>
 
-            @if (_loading)
-            {
-                <MudProgressLinear Indeterminate="true" Class="mt-4" />
-            }
-            else
-            {
+            <StateView Loading="_loading" IsEmpty="@(_roles.Length == 0)"
+                       EmptyText="No roles yet. Create your first role."
+                       EmptyIcon="@Icons.Material.Filled.Badge"
+                       EmptyActionText="Add Role"
+                       EmptyActionIcon="@Icons.Material.Filled.Add"
+                       OnEmptyAction="StartCreate">
                 <MudList T="RoleResponse" Class="mt-2" SelectedValue="_selected" SelectedValueChanged="SelectRole">
                     @foreach (var role in _roles)
                     {
@@ -40,7 +40,7 @@
                         </MudListItem>
                     }
                 </MudList>
-            }
+            </StateView>
         </MudPaper>
     </MudItem>
 

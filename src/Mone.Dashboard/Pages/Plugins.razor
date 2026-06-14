@@ -9,12 +9,7 @@
 
 <MudTabs Elevation="0" Rounded="true" PanelClass="pa-0 pt-4">
     <MudTabPanel Text="Catalog" Icon="@Icons.Material.Filled.Extension">
-        @if (_catalogLoading)
-        {
-            <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
-        }
-        else
-        {
+        <StateView Loading="_catalogLoading" Error="@_catalogError" IsEmpty="false">
             <div class="d-flex align-center mb-2">
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">
                     @FilteredCatalog.Count of @_catalog.Length plugin@(_catalog.Length == 1 ? "" : "s")
@@ -162,7 +157,7 @@
                     }
                 </MudGrid>
             }
-        }
+        </StateView>
     </MudTabPanel>
 
     <MudTabPanel Text="Repositories" Icon="@Icons.Material.Filled.Source">
@@ -183,18 +178,9 @@
             </MudGrid>
         </MudPaper>
 
-        @if (_reposLoading)
-        {
-            <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
-        }
-        else if (_repos.Length == 0)
-        {
-            <MudPaper Class="pa-4 d-flex flex-column align-center">
-                <MudText Typo="Typo.body2" Class="mud-text-secondary">No repositories configured.</MudText>
-            </MudPaper>
-        }
-        else
-        {
+        <StateView Loading="_reposLoading" Error="@_reposError" IsEmpty="@(_repos.Length == 0)"
+                   EmptyText="No repositories configured."
+                   EmptyIcon="@Icons.Material.Filled.Source">
             <MudDataGrid Items="_repos" Hover="true" Dense="true" T="PluginRepositoryResponse">
                 <Columns>
                     <PropertyColumn Property="x => x.DisplayName" Title="Name" />
@@ -234,13 +220,15 @@
                     </TemplateColumn>
                 </Columns>
             </MudDataGrid>
-        }
+        </StateView>
     </MudTabPanel>
 </MudTabs>
 
 @code {
     private bool _catalogLoading = true;
     private bool _reposLoading = true;
+    private string? _catalogError;
+    private string? _reposError;
     private bool _busy;
     private bool _showPrereleases;
     private PluginCatalogResponse[] _catalog = [];
@@ -342,6 +330,7 @@
     private async Task LoadCatalogAsync()
     {
         _catalogLoading = true;
+        _catalogError = null;
         try
         {
             _catalog = await Api.GetPluginCatalogAsync();
@@ -351,15 +340,18 @@
             foreach (var key in _selectedVersionByName.Keys.Where(k => !live.Contains(k)).ToList())
                 _selectedVersionByName.Remove(key);
         }
-        catch (Exception ex) { Snackbar.Add($"Failed to load catalog: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { _catalogError = ax.Message; }
+        catch (Exception) { _catalogError = "Unable to load the plugin catalog. Please try again."; }
         finally { _catalogLoading = false; }
     }
 
     private async Task LoadReposAsync()
     {
         _reposLoading = true;
+        _reposError = null;
         try { _repos = await Api.GetPluginRepositoriesAsync(); }
-        catch (Exception ex) { Snackbar.Add($"Failed to load repositories: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { _reposError = ax.Message; }
+        catch (Exception) { _reposError = "Unable to load plugin repositories. Please try again."; }
         finally { _reposLoading = false; }
     }
 
@@ -379,7 +371,7 @@
             Snackbar.Add("Repository added — syncing in background", Severity.Success);
             await LoadReposAsync();
         }
-        catch (Exception ex) { Snackbar.Add($"Add failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 
@@ -429,7 +421,7 @@
             Snackbar.Add($"Synced {repo.DisplayName}", Severity.Success);
             await Task.WhenAll(LoadReposAsync(), LoadCatalogAsync());
         }
-        catch (Exception ex) { Snackbar.Add($"Sync failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 
@@ -442,7 +434,7 @@
             Snackbar.Add($"Removed {repo.DisplayName}", Severity.Success);
             await Task.WhenAll(LoadReposAsync(), LoadCatalogAsync());
         }
-        catch (Exception ex) { Snackbar.Add($"Delete failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 
@@ -455,7 +447,7 @@
             Snackbar.Add($"Installed {p.Name} {version.Version}", Severity.Success);
             await LoadCatalogAsync();
         }
-        catch (Exception ex) { Snackbar.Add($"Install failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 
@@ -468,7 +460,7 @@
             Snackbar.Add($"Uninstalled {p.Name}", Severity.Success);
             await LoadCatalogAsync();
         }
-        catch (Exception ex) { Snackbar.Add($"Uninstall failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 
@@ -482,7 +474,7 @@
             Snackbar.Add("Repositories synced and plugin engine reloaded", Severity.Success);
             await Task.WhenAll(LoadReposAsync(), LoadCatalogAsync());
         }
-        catch (Exception ex) { Snackbar.Add($"Reload failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 

@@ -1,0 +1,36 @@
+@if (Loading)
+{
+    <LoadingIndicator />
+}
+else if (!string.IsNullOrWhiteSpace(Error))
+{
+    <ErrorAlert Message="@Error" />
+}
+else if (IsEmpty)
+{
+    @if (EmptyContent is not null)
+    {
+        @EmptyContent
+    }
+    else
+    {
+        <EmptyState Message="@EmptyText" Icon="@EmptyIcon" ActionText="@EmptyActionText" ActionIcon="@EmptyActionIcon" OnAction="OnEmptyAction" />
+    }
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool IsEmpty { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "Nothing here yet.";
+    [Parameter] public string EmptyIcon { get; set; } = Icons.Material.Filled.Inbox;
+    [Parameter] public string? EmptyActionText { get; set; }
+    [Parameter] public string? EmptyActionIcon { get; set; }
+    [Parameter] public EventCallback OnEmptyAction { get; set; }
+}

@@ -13,13 +13,14 @@ public static class ProbeResultEndpoints
     public static void MapProbeResultEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/hosts/{hostId:guid}/results")
+            .WithTags("Probe Results")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Monitoring);
 
-        group.MapGet("/", async (Guid hostId, UtcQueryTime? from, UtcQueryTime? to, string? probeId, MoneDbContext db) =>
+        group.MapGet("/", async (Guid hostId, UtcQueryTime? from, UtcQueryTime? to, string? probeId, int? limit, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             IQueryable<Infrastructure.Data.Entities.ProbeResultEntity> query = db.ProbeResults
                 .Where(r => r.TargetId == hostId);
@@ -30,16 +31,21 @@ public static class ProbeResultEndpoints
 
             var results = await query
                 .OrderByDescending(r => r.Timestamp)
+                .Take(Math.Clamp(limit ?? 1000, 1, 5000))
                 .Select(r => new ProbeResultResponse(r.Timestamp, r.TargetId, r.ProbeId, r.Status, r.Summary, r.DurationMs, r.MetadataJson))
                 .ToListAsync();
 
             return Results.Ok(results);
-        });
+        })
+        .WithName("ListProbeResults")
+        .WithSummary("List probe results for a host, optionally filtered by time range and probe id. Newest-first, bounded by the limit query param (default 1000, max 5000 rows). Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<ProbeResultResponse>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/metric-keys", async (Guid hostId, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var recentMetadata = await db.ProbeResults
                 .Where(r => r.TargetId == hostId && r.MetadataJson != null)
@@ -63,12 +69,16 @@ public static class ProbeResultEndpoints
                 .ToArray();
 
             return Results.Ok(keys);
-        });
+        })
+        .WithName("ListProbeResultMetricKeys")
+        .WithSummary("List distinct metric keys observed in recent probe-result metadata for a host. Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<string>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/declared-metrics", async (Guid hostId, MoneDbContext db, InheritanceResolver resolver) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var effective = await resolver.GetEffectiveProbeAssignmentsAsync(hostId);
             var assignmentIds = effective.Select(e => e.AssignmentId).ToArray();
@@ -96,14 +106,18 @@ public static class ProbeResultEndpoints
                 .ToArray();
 
             return Results.Ok(dedup);
-        });
+        })
+        .WithName("ListHostDeclaredMetrics")
+        .WithSummary("List declared metrics from the host's effective probe assignments. Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<HostDeclaredMetricResponse>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/metrics/series", async (Guid hostId, string key, int? points, UtcQueryTime? from, UtcQueryTime? to, MoneDbContext db) =>
         {
             if (string.IsNullOrWhiteSpace(key))
-                return Results.BadRequest("key required");
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["key"] = new[] { "key required" } });
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var hasRange = from.HasValue || to.HasValue;
             // A bounded window can legitimately contain many more points than the dashboard's
@@ -171,12 +185,17 @@ public static class ProbeResultEndpoints
             }
 
             return Results.Ok(new MetricSeriesResponse(key, pointsList.Length, min, max, avg, latest, latestTs, pointsList));
-        });
+        })
+        .WithName("GetMetricSeries")
+        .WithSummary("Get a numeric time series for a metric key on a host, with summary statistics. Requires the key; returns 404 if the host does not exist.")
+        .Produces<MetricSeriesResponse>()
+        .ProducesValidationProblem()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/latest-per-probe", async (Guid hostId, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var probeIds = await db.ProbeResults
                 .Where(r => r.TargetId == hostId)
@@ -197,7 +216,11 @@ public static class ProbeResultEndpoints
             }
 
             return Results.Ok(results);
-        });
+        })
+        .WithName("ListLatestProbeResultsPerProbe")
+        .WithSummary("List the most recent probe result for each probe on a host. Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<ProbeResultResponse>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private sealed class JsonbMetricRow

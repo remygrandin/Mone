@@ -12,19 +12,9 @@
     Probe executors and checker engines that have registered with the API, with their reported address and live health.
 </MudText>
 
-@if (_loading)
-{
-    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
-}
-else if (_nodes.Length == 0)
-{
-    <MudPaper Class="pa-4 mb-4 d-flex flex-column align-center">
-        <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Large" Class="mud-text-secondary mb-2" />
-        <MudText Typo="Typo.body1" Class="mud-text-secondary">No executor nodes have registered yet</MudText>
-    </MudPaper>
-}
-else
-{
+<StateView Loading="_loading" Error="@_error" IsEmpty="@(_nodes.Length == 0)"
+           EmptyText="No executor nodes have registered yet"
+           EmptyIcon="@Icons.Material.Filled.Hub">
     <MudDataGrid Items="_nodes" Hover="true" Dense="true" T="ExecutorNodeResponse">
         <Columns>
             <PropertyColumn Property="x => x.Name" Title="Name" />
@@ -59,10 +49,11 @@ else
             </TemplateColumn>
         </Columns>
     </MudDataGrid>
-}
+</StateView>
 
 @code {
     private bool _loading = true;
+    private string? _error;
     private ExecutorNodeResponse[] _nodes = [];
     private Timer? _refreshTimer;
 
@@ -78,16 +69,23 @@ else
 
     private async Task LoadNodesAsync()
     {
+        _error = null;
         try
         {
             _nodes = await Api.GetExecutorNodesAsync();
         }
-        catch (Exception ex)
+        catch (ApiException ax)
         {
-            Snackbar.Add($"Failed to load nodes: {ex.Message}", Severity.Error);
+            _error = ax.Message;
         }
-
-        _loading = false;
+        catch (Exception)
+        {
+            _error = "Unable to load nodes. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private static Color HealthColor(string health) => health switch
@@ -125,9 +123,9 @@ else
                 Snackbar.Add("Node renamed", Severity.Success);
                 await LoadNodesAsync();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to rename: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -152,9 +150,9 @@ else
                 Snackbar.Add("Node deleted", Severity.Success);
                 await LoadNodesAsync();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to delete: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }

@@ -12,6 +12,7 @@ public static class HostEndpoints
     public static void MapHostEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/hosts")
+            .WithTags("Hosts")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Hosts);
 
@@ -32,7 +33,10 @@ public static class HostEndpoints
 
             var hosts = await query.OrderBy(h => h.Name).ToListAsync();
             return Results.Ok(hosts.Select(ToResponse));
-        });
+        })
+        .WithName("ListHosts")
+        .WithSummary("List all hosts, optionally filtered by comma-separated tag names.")
+        .Produces<IEnumerable<HostResponse>>();
 
         group.MapGet("/{id:guid}", async (Guid id, MoneDbContext db) =>
         {
@@ -42,16 +46,22 @@ public static class HostEndpoints
                 .Include(h => h.CheckerAssignments)
                 .FirstOrDefaultAsync(h => h.Id == id);
 
-            return host is null ? Results.NotFound() : Results.Ok(ToResponse(host));
-        });
+            return host is null
+                ? Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound)
+                : Results.Ok(ToResponse(host));
+        })
+        .WithName("GetHost")
+        .WithSummary("Get a single host by id, including its tags and assignments.")
+        .Produces<HostResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/", async (CreateHostRequest request, MoneDbContext db) =>
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                return Results.BadRequest("Name is required.");
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["Name"] = new[] { "Name is required." } });
 
             if (await db.Hosts.AnyAsync(h => h.Name == request.Name))
-                return Results.Conflict($"Host '{request.Name}' already exists.");
+                return Results.Problem($"Host '{request.Name}' already exists.", statusCode: StatusCodes.Status409Conflict);
 
             var now = DateTimeOffset.UtcNow;
             var host = new HostEntity
@@ -78,7 +88,12 @@ public static class HostEndpoints
                 await db.Entry(ht).Reference(x => x.Tag).LoadAsync();
 
             return Results.Created($"/api/hosts/{host.Id}", ToResponse(host));
-        });
+        })
+        .WithName("CreateHost")
+        .WithSummary("Create a new host. Returns 409 if a host with the same name already exists.")
+        .Produces<HostResponse>(StatusCodes.Status201Created)
+        .ProducesValidationProblem()
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPut("/{id:guid}", async (Guid id, UpdateHostRequest request, MoneDbContext db) =>
         {
@@ -86,10 +101,10 @@ public static class HostEndpoints
                 .Include(h => h.HostTags).ThenInclude(ht => ht.Tag)
                 .FirstOrDefaultAsync(h => h.Id == id);
 
-            if (host is null) return Results.NotFound();
+            if (host is null) return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             if (request.Name != host.Name && await db.Hosts.AnyAsync(h => h.Name == request.Name && h.Id != id))
-                return Results.Conflict($"Host '{request.Name}' already exists.");
+                return Results.Problem($"Host '{request.Name}' already exists.", statusCode: StatusCodes.Status409Conflict);
 
             host.Name = request.Name;
             host.Address = request.Address;
@@ -109,17 +124,26 @@ public static class HostEndpoints
                 await db.Entry(ht).Reference(x => x.Tag).LoadAsync();
 
             return Results.Ok(ToResponse(host));
-        });
+        })
+        .WithName("UpdateHost")
+        .WithSummary("Update an existing host. Returns 404 if not found, 409 on a name collision.")
+        .Produces<HostResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/{id:guid}", async (Guid id, MoneDbContext db) =>
         {
             var host = await db.Hosts.FindAsync(id);
-            if (host is null) return Results.NotFound();
+            if (host is null) return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             db.Hosts.Remove(host);
             await db.SaveChangesAsync();
             return Results.NoContent();
-        });
+        })
+        .WithName("DeleteHost")
+        .WithSummary("Delete a host by id. Returns 404 if the host does not exist.")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private static HostResponse ToResponse(HostEntity host) => new(

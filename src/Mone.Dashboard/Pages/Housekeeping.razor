@@ -14,7 +14,7 @@
             <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">Database size</MudText>
             @if (_dbSize is null)
             {
-                <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                <LoadingIndicator />
             }
             else
             {
@@ -57,8 +57,8 @@
 
 @if (_assessing)
 {
-    <MudProgressLinear Indeterminate="true" Class="my-2" />
-    <MudText Typo="Typo.body2" Class="mud-text-secondary">Scanning tables — this may take a moment on large datasets…</MudText>
+    <LoadingIndicator />
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mud-width-full" Align="Align.Center">Scanning tables — this may take a moment on large datasets…</MudText>
 }
 else if (_report is not null)
 {
@@ -123,7 +123,7 @@ else if (_report is not null)
     private async Task LoadDbSizeAsync()
     {
         try { _dbSize = await Api.GetDbSizeAsync(); }
-        catch (Exception ex) { Snackbar.Add($"Failed to load DB size: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
     }
 
     private async Task AssessAsync()
@@ -136,7 +136,7 @@ else if (_report is not null)
             if (_report is not null) _dbSize = _report.DbSize;
             Snackbar.Add("Assessment complete", Severity.Success);
         }
-        catch (Exception ex) { Snackbar.Add($"Assessment failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _assessing = false; _busy = false; }
     }
 
@@ -156,7 +156,7 @@ else if (_report is not null)
             Snackbar.Add($"Deleted {result?.DeletedRows ?? 0:N0} rows from {cat.Label}", Severity.Success);
             await AssessAsync();
         }
-        catch (Exception ex) { Snackbar.Add($"Cleanup failed: {ex.Message}", Severity.Error); }
+        catch (ApiException ax) { Snackbar.Add(ax.Message, Severity.Error); }
         finally { _busy = false; }
     }
 }

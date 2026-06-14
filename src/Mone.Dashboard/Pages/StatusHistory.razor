@@ -19,7 +19,11 @@
 
 @if (_loading)
 {
-    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+    <LoadingIndicator />
+}
+else if (_error is not null)
+{
+    <ErrorAlert Message="@_error" />
 }
 else if (_history.Length == 0)
 {
@@ -38,7 +42,7 @@ else
                                 @entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
                             </MudText>
                             <MudText Typo="Typo.body2" Class="mt-1">
-                                <strong>@entry.CheckerId</strong>
+                                <strong>@ResolveCheckerName(entry.CheckerId)</strong>
                             </MudText>
                             <div class="d-flex align-center gap-2 mt-1">
                                 <MudChip T="string" Color="StatusColorHelper.ToMudColor(entry.PreviousStatus)" Size="Size.Small">
@@ -61,7 +65,9 @@ else
     [Parameter] public Guid Id { get; set; }
 
     private bool _loading = true;
+    private string? _error;
     private StatusResponse[] _history = [];
+    private Dictionary<string, string> _checkerNames = new();
     private DateRange _dateRange = new(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
 
     protected override async Task OnInitializedAsync()
@@ -72,6 +78,7 @@ else
     private async Task LoadHistoryAsync()
     {
         _loading = true;
+        _error = null;
         StateHasChanged();
 
         try
@@ -83,11 +90,20 @@ else
                 ? new DateTimeOffset(_dateRange.End.Value.AddDays(1), TimeSpan.Zero)
                 : null;
 
-            _history = await Api.GetStatusHistoryAsync(Id, from, to);
-            _history = _history.OrderByDescending(s => s.Timestamp).ToArray();
+            var assignments = await Api.GetCheckerAssignmentsAsync(Id);
+            _checkerNames = assignments.ToDictionary(a => a.Id.ToString(), a => a.Name);
+
+            var history = await Api.GetStatusHistoryAsync(Id, from, to);
+            _history = history.OrderByDescending(s => s.Timestamp).ToArray();
+        }
+        catch (ApiException ax)
+        {
+            _error = ax.Message;
+            _history = [];
         }
         catch (Exception)
         {
+            _error = "Unable to load status history. Please try again.";
             _history = [];
         }
         finally
@@ -95,4 +111,7 @@ else
             _loading = false;
         }
     }
+
+    private string ResolveCheckerName(string checkerId) =>
+        _checkerNames.TryGetValue(checkerId, out var name) ? name : checkerId;
 }

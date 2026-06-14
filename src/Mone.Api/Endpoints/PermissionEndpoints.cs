@@ -21,12 +21,21 @@ public static class PermissionEndpoints
 
             var caps = await permissions.GetCapabilitiesAsync(userId);
             return Results.Ok(new MyPermissionsResponse(userId, caps));
-        }).RequireAuthorization();
+        })
+        .RequireAuthorization()
+        .WithTags("Permissions")
+        .WithName("GetMyPermissions")
+        .WithSummary("Get the calling user's own effective capabilities. Available to any authenticated user.")
+        .Produces<MyPermissionsResponse>();
 
         // Static catalog describing every resource and what it applies to. Drives the role editor.
         app.MapGet("/api/permissions/catalog", () => Results.Ok(Catalog))
             .RequireAuthorization()
-            .RequirePermission(PermissionResource.Administration, PermissionLevel.View);
+            .RequirePermission(PermissionResource.Administration, PermissionLevel.View)
+            .WithTags("Permissions")
+            .WithName("GetPermissionCatalog")
+            .WithSummary("Get the static catalog of permission resources, levels, and scope types that drives the role editor.")
+            .Produces<PermissionCatalogResponse>();
     }
 
     private static readonly PermissionCatalogResponse Catalog = new(

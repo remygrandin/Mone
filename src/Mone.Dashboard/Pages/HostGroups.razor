@@ -18,25 +18,21 @@
                            OnClick="OpenCreateDialog">Add Group</MudButton>
             </MudToolBar>
 
-            @if (_loading)
-            {
-                <MudProgressLinear Indeterminate="true" Class="mt-4" />
-            }
-            else if (_treeItems.Count == 0)
-            {
-                <MudText Class="mt-4" Color="Color.Secondary">No groups yet. Create one to get started.</MudText>
-            }
-            else
-            {
-                <MudTreeView T="TreeNode" Items="_treeItems" Class="mt-4" ExpandOnClick="true"
-                             SelectedValueChanged="OnTreeNodeSelected">
-                    <ItemTemplate>
-                        <MudTreeViewItem T="TreeNode" @bind-Expanded="@context.Expanded"
-                                         Value="@context.Value" Text="@context.Text"
-                                         Icon="@context.Icon" Items="@context.Children" />
-                    </ItemTemplate>
-                </MudTreeView>
-            }
+            <StateView Loading="_loading" Error="@_error" IsEmpty="@(_treeItems.Count == 0)">
+                <EmptyContent>
+                    <MudText Class="mt-4" Color="Color.Secondary">No groups yet. Create one to get started.</MudText>
+                </EmptyContent>
+                <ChildContent>
+                    <MudTreeView T="TreeNode" Items="_treeItems" Class="mt-4" ExpandOnClick="true"
+                                 SelectedValueChanged="OnTreeNodeSelected">
+                        <ItemTemplate>
+                            <MudTreeViewItem T="TreeNode" @bind-Expanded="@context.Expanded"
+                                             Value="@context.Value" Text="@context.Text"
+                                             Icon="@context.Icon" Items="@context.Children" />
+                        </ItemTemplate>
+                    </MudTreeView>
+                </ChildContent>
+            </StateView>
         </MudPaper>
     </MudItem>
 
@@ -93,6 +89,7 @@
 
 @code {
     private bool _loading = true;
+    private string? _error;
     private List<TreeItemData<TreeNode>> _treeItems = new();
     private TreeNode? _selectedNode;
     private HostGroupResponse? _selectedGroup;
@@ -103,27 +100,32 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            await LoadGroups();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[MONE-GROUP] LoadGroups failed: {ex.Message}");
-        }
-
-        _loading = false;
+        await LoadGroups();
     }
 
     private async Task LoadGroups()
     {
-        _allGroups = await Api.GetHostGroupsAsync();
-        Console.WriteLine($"[MONE-GROUP] Loaded {_allGroups.Length} groups");
-        foreach (var g in _allGroups)
-            Console.WriteLine($"[MONE-GROUP]   - {g.Name} (Id={g.Id}, Parent={g.ParentGroupId})");
+        _loading = true;
+        _error = null;
+        StateHasChanged();
 
-        _treeItems = BuildTree(_allGroups);
-        Console.WriteLine($"[MONE-GROUP] Built {_treeItems.Count} root tree items");
+        try
+        {
+            _allGroups = await Api.GetHostGroupsAsync();
+            _treeItems = BuildTree(_allGroups);
+        }
+        catch (ApiException ax)
+        {
+            _error = ax.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Unable to load host groups. Please try again.";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private List<TreeItemData<TreeNode>> BuildTree(HostGroupResponse[] groups)
@@ -163,7 +165,15 @@
         if (node?.Group is { } g)
         {
             _selectedGroup = g;
-            _selectedGroupDetail = await Api.GetHostGroupAsync(g.Id);
+            try
+            {
+                _selectedGroupDetail = await Api.GetHostGroupAsync(g.Id);
+            }
+            catch (ApiException ax)
+            {
+                _selectedGroupDetail = null;
+                Snackbar.Add(ax.Message, Severity.Error);
+            }
         }
         else
         {
@@ -183,9 +193,16 @@
         var result = await dialog.Result;
         if (result is { Canceled: false, Data: CreateHostGroupRequest req })
         {
-            await Api.CreateHostGroupAsync(req);
-            await LoadGroups();
-            Snackbar.Add("Group created.", Severity.Success);
+            try
+            {
+                await Api.CreateHostGroupAsync(req);
+                await LoadGroups();
+                Snackbar.Add("Group created.", Severity.Success);
+            }
+            catch (ApiException ax)
+            {
+                Snackbar.Add(ax.Message, Severity.Error);
+            }
         }
     }
 
@@ -203,10 +220,17 @@
         var result = await dialog.Result;
         if (result is { Canceled: false, Data: CreateHostGroupRequest req })
         {
-            await Api.UpdateHostGroupAsync(_selectedGroup.Id, new UpdateHostGroupRequest(req.Name, req.Description, req.ParentGroupId));
-            await LoadGroups();
-            _selectedGroupDetail = await Api.GetHostGroupAsync(_selectedGroup.Id);
-            Snackbar.Add("Group updated.", Severity.Success);
+            try
+            {
+                await Api.UpdateHostGroupAsync(_selectedGroup.Id, new UpdateHostGroupRequest(req.Name, req.Description, req.ParentGroupId));
+                await LoadGroups();
+                _selectedGroupDetail = await Api.GetHostGroupAsync(_selectedGroup.Id);
+                Snackbar.Add("Group updated.", Severity.Success);
+            }
+            catch (ApiException ax)
+            {
+                Snackbar.Add(ax.Message, Severity.Error);
+            }
         }
     }
 
@@ -226,9 +250,9 @@
                 await LoadGroups();
                 Snackbar.Add("Group deleted.", Severity.Success);
             }
-            catch (HttpRequestException ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Cannot delete: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }

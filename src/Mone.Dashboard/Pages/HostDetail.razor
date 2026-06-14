@@ -12,7 +12,14 @@
 
 @if (_loading)
 {
-    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
+    <LoadingIndicator />
+}
+else if (!string.IsNullOrWhiteSpace(_error))
+{
+    <ErrorAlert Message="@_error" />
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => Nav.NavigateTo("/hosts"))" Class="mt-4">
+        Back to Hosts
+    </MudButton>
 }
 else if (_host is null)
 {
@@ -636,6 +643,7 @@ else
     [Parameter] public Guid Id { get; set; }
 
     private bool _loading = true;
+    private string? _error;
     private HostResponse? _host;
     private EffectiveProbeAssignment[] _effectiveProbes = [];
     private EffectiveCheckerAssignment[] _effectiveCheckers = [];
@@ -740,7 +748,7 @@ else
                 var nodesTask = Api.GetExecutorNodesAsync();
 
                 try { await Task.WhenAll(effectiveTask, overridesTask, statusHistoryTask, pluginsTask, groupsTask, latestProbeTask, metricKeysTask, directProbesTask, directCheckersTask, declaredMetricsTask, nodesTask); }
-                catch (Exception ex) { Console.WriteLine($"[MONE] Task.WhenAll partial failure: {ex.GetType().Name}: {ex.Message}"); }
+                catch { /* Partial failures are surfaced per-task below via IsCompletedSuccessfully. */ }
 
                 if (directProbesTask.IsCompletedSuccessfully)
                 {
@@ -806,10 +814,18 @@ else
                 }
             }
         }
+        catch (ApiException ax)
+        {
+            _error = ax.Message;
+        }
         catch (Exception)
         {
+            _error = "Unable to load host details. Please try again.";
         }
-        _loading = false;
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private string ResolveGroupName(Guid? groupId) =>
@@ -948,9 +964,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to update override: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -989,9 +1005,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to update override: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1296,9 +1312,9 @@ else
             _host = await Api.GetHostAsync(Id);
             StateHasChanged();
         }
-        catch (Exception ex)
+        catch (ApiException ax)
         {
-            Snackbar.Add($"Failed to update host: {ex.Message}", Severity.Error);
+            Snackbar.Add(ax.Message, Severity.Error);
         }
     }
 
@@ -1332,9 +1348,9 @@ else
                 _host = await Api.GetHostAsync(Id);
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to update host: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1354,9 +1370,9 @@ else
                 Snackbar.Add("Host deleted.", Severity.Success);
                 Nav.NavigateTo("/hosts");
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to delete host: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1447,9 +1463,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to update probe assignment: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1461,9 +1477,9 @@ else
             await Api.TriggerProbeAsync(Id, probePluginId);
             Snackbar.Add($"Probe '{probePluginId}' triggered.", Severity.Success);
         }
-        catch (Exception ex)
+        catch (ApiException ax)
         {
-            Snackbar.Add($"Failed to trigger probe: {ex.Message}", Severity.Error);
+            Snackbar.Add(ax.Message, Severity.Error);
         }
     }
 
@@ -1489,9 +1505,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to create probe assignment: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1509,9 +1525,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to delete probe assignment: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1538,9 +1554,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to create checker assignment: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1577,9 +1593,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to update checker assignment: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }
@@ -1597,9 +1613,9 @@ else
                 await LoadEffectiveAssignmentsAsync();
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to delete checker assignment: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }

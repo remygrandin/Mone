@@ -1,0 +1,16 @@
+<MudPaper Elevation="0" Class="pa-8 d-flex flex-column align-center">
+    <MudIcon Icon="@Icon" Size="Size.Large" Class="mb-2" />
+    <MudText Typo="Typo.subtitle1">@Message</MudText>
+    @if (!string.IsNullOrWhiteSpace(ActionText))
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@ActionIcon" OnClick="OnAction" Class="mt-4">@ActionText</MudButton>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public string Message { get; set; } = "Nothing here yet.";
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.Inbox;
+    [Parameter] public string? ActionText { get; set; }
+    [Parameter] public string? ActionIcon { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
+}

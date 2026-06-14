@@ -13,6 +13,7 @@ public static class NotificationAuditEndpoints
     public static void MapNotificationAuditEndpoints(this WebApplication app)
     {
         var global = app.MapGroup("/api/notifications")
+            .WithTags("Notifications")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Monitoring);
 
@@ -22,6 +23,7 @@ public static class NotificationAuditEndpoints
             DeliveryStatus? status,
             DateTimeOffset? from,
             DateTimeOffset? to,
+            int? limit,
             MoneDbContext db) =>
         {
             IQueryable<NotificationAuditEntity> query = db.NotificationAudit;
@@ -34,6 +36,7 @@ public static class NotificationAuditEndpoints
 
             var results = await query
                 .OrderByDescending(n => n.Timestamp)
+                .Take(Math.Clamp(limit ?? 500, 1, 2000))
                 .Select(n => new NotificationAuditResponse(
                     n.Id, n.Timestamp, n.TargetId, n.CheckerId,
                     n.NotificationPluginId, n.DeliveryStatus, n.ErrorMessage,
@@ -41,20 +44,25 @@ public static class NotificationAuditEndpoints
                 .ToListAsync();
 
             return Results.Ok(results);
-        });
+        })
+        .WithName("ListNotificationAudit")
+        .WithSummary("List notification delivery audit records, filterable by target, plugin, status, and time range. Newest-first, bounded by the limit query param (default 500, max 2000 rows).")
+        .Produces<IEnumerable<NotificationAuditResponse>>();
 
         var scoped = app.MapGroup("/api/hosts/{hostId:guid}/notifications")
+            .WithTags("Notifications")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Monitoring);
 
-        scoped.MapGet("/", async (Guid hostId, MoneDbContext db) =>
+        scoped.MapGet("/", async (Guid hostId, int? limit, MoneDbContext db) =>
         {
             if (!await db.Hosts.AnyAsync(h => h.Id == hostId))
-                return Results.NotFound();
+                return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
 
             var results = await db.NotificationAudit
                 .Where(n => n.TargetId == hostId)
                 .OrderByDescending(n => n.Timestamp)
+                .Take(Math.Clamp(limit ?? 500, 1, 2000))
                 .Select(n => new NotificationAuditResponse(
                     n.Id, n.Timestamp, n.TargetId, n.CheckerId,
                     n.NotificationPluginId, n.DeliveryStatus, n.ErrorMessage,
@@ -62,6 +70,10 @@ public static class NotificationAuditEndpoints
                 .ToListAsync();
 
             return Results.Ok(results);
-        });
+        })
+        .WithName("ListHostNotificationAudit")
+        .WithSummary("List notification delivery audit records for a single host. Newest-first, bounded by the limit query param (default 500, max 2000 rows). Returns 404 if the host does not exist.")
+        .Produces<IEnumerable<NotificationAuditResponse>>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 }

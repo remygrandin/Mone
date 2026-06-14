@@ -160,9 +160,7 @@ public sealed class ApiClient
             return default;
         }
 
-        if (response.StatusCode == HttpStatusCode.Forbidden)
-            throw new ApiForbiddenException();
-
+        await ThrowIfClientErrorAsync(response);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>();
     }
@@ -346,33 +344,11 @@ public sealed class ApiClient
             return;
 
         var body = await response.Content.ReadAsStringAsync();
-        var message = ExtractMessage(body) ?? response.ReasonPhrase ?? "Request failed.";
+        var message = ProblemDetailsParser.ExtractMessage(body) ?? response.ReasonPhrase ?? "Request failed.";
 
         if (response.StatusCode == HttpStatusCode.Forbidden)
             throw new ApiForbiddenException(message);
 
         throw new ApiException(response.StatusCode, message);
-    }
-
-    private static string? ExtractMessage(string body)
-    {
-        if (string.IsNullOrWhiteSpace(body)) return null;
-
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            if (root.ValueKind == System.Text.Json.JsonValueKind.String)
-                return root.GetString();
-            foreach (var prop in new[] { "error", "detail", "title", "message" })
-                if (root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
-                    return v.GetString();
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return body;
-        }
-
-        return null;
     }
 }

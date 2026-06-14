@@ -20,6 +20,7 @@ public static class OidcAuthEndpoints
             return Results.Challenge(properties, [OpenIdConnectDefaults.AuthenticationScheme]);
         })
         .WithName("OidcLogin")
+        .WithSummary("Begin the OIDC login flow by challenging the configured external identity provider.")
         .AllowAnonymous();
 
         group.MapGet("/callback", async (
@@ -60,10 +61,14 @@ public static class OidcAuthEndpoints
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "OIDC provisioning failed for Email={Email}", email);
-                return Results.Problem("User provisioning failed", statusCode: StatusCodes.Status500InternalServerError);
+                return Results.Problem("User provisioning failed", statusCode: StatusCodes.Status502BadGateway);
             }
         })
         .WithName("OidcCallback")
+        .WithSummary("Handle the OIDC provider redirect, provision or match the user, and redirect to the app with a token.")
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status401Unauthorized)
+        .ProducesProblem(StatusCodes.Status502BadGateway)
         .AllowAnonymous();
 
         return routes;

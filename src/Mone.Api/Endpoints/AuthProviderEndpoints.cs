@@ -23,6 +23,7 @@ public static class AuthProviderEndpoints
         })
         .WithName("GetAuthProviders")
         .WithTags("Auth")
+        .WithSummary("List the external authentication providers (OIDC, LDAP) that are currently enabled.")
         .Produces<List<AuthProviderResponse>>()
         .AllowAnonymous();
 

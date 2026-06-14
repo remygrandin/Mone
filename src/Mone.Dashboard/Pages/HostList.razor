@@ -17,17 +17,12 @@
                OnClick="OpenAddHostDialog">Add Host</MudButton>
 </div>
 
-@if (_error is not null)
-{
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
-}
-
-@if (_loading)
-{
-    <MudProgressCircular Indeterminate="true" Class="d-flex mx-auto my-8" />
-}
-else
-{
+<StateView Loading="_loading" Error="@_error" IsEmpty="@(_hosts.Count == 0)"
+           EmptyText="No hosts yet. Add your first host to start monitoring."
+           EmptyIcon="@Icons.Material.Filled.Dns"
+           EmptyActionText="Add Host"
+           EmptyActionIcon="@Icons.Material.Filled.Add"
+           OnEmptyAction="OpenAddHostDialog">
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.subtitle1" Class="mb-2">Filter by Tags</MudText>
         <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection" SelectedValuesChanged="OnTagSelectionChanged">
@@ -70,7 +65,7 @@ else
             </TemplateColumn>
         </Columns>
     </MudDataGrid>
-}
+</StateView>
 
 @code {
     private bool _loading = true;
@@ -106,15 +101,21 @@ else
             }
             catch
             {
+                // Per-host status is best-effort: degrade to Unknown so one host's
+                // status fetch failing never blocks rendering the rest of the list.
             }
             return new HostViewModel(host, status);
         });
 
         _hosts = (await Task.WhenAll(tasks)).ToList();
         }
-        catch (Exception ex)
+        catch (ApiException ax)
         {
-            _error = $"Failed to load hosts: {ex.Message}";
+            _error = ax.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Unable to load hosts. Please try again.";
         }
         finally
         {
@@ -153,9 +154,9 @@ else
                 Snackbar.Add("Host created.", Severity.Success);
                 await LoadDataAsync();
             }
-            catch (Exception ex)
+            catch (ApiException ax)
             {
-                Snackbar.Add($"Failed to create host: {ex.Message}", Severity.Error);
+                Snackbar.Add(ax.Message, Severity.Error);
             }
         }
     }

@@ -35,6 +35,7 @@ public static class AuthEndpoints
             return Results.Created($"/api/auth/me", new UserResponse(user.Id, user.Email!));
         })
         .WithName("Register")
+        .WithSummary("Register a new local user account with an email and password.")
         .Produces<UserResponse>(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
@@ -56,6 +57,7 @@ public static class AuthEndpoints
             return Results.Ok(token);
         })
         .WithName("Login")
+        .WithSummary("Authenticate with email and password and receive a JWT token. Returns 401 on invalid credentials.")
         .Produces<TokenResponse>()
         .ProducesProblem(StatusCodes.Status401Unauthorized);
 
@@ -66,6 +68,7 @@ public static class AuthEndpoints
             return Results.Ok(new UserResponse(userId, email));
         })
         .WithName("Me")
+        .WithSummary("Get the currently authenticated user's id and email from the bearer token.")
         .RequireAuthorization()
         .Produces<UserResponse>();
 

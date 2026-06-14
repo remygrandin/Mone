@@ -12,6 +12,7 @@ public static class DashboardEndpoints
     public static void MapDashboardEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/dashboard")
+            .WithTags("Dashboard")
             .RequireAuthorization()
             .RequirePermission(PermissionResource.Monitoring);
 
@@ -57,7 +58,10 @@ public static class DashboardEndpoints
             }
 
             return Results.Ok(new DashboardSummaryResponse(totalHosts, healthy, degraded, unhealthy, unreachable, unknown));
-        });
+        })
+        .WithName("GetDashboardSummary")
+        .WithSummary("Get aggregate host-health counts (healthy, degraded, unhealthy, unreachable, unknown) across all enabled hosts.")
+        .Produces<DashboardSummaryResponse>();
     }
 
     private static int StatusSeverity(MonitoringStatus status) => status switch
