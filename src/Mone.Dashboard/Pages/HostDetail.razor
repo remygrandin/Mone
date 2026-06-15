@@ -148,9 +148,7 @@ else
                                     <tr>
                                         <td>@CheckerDisplayName(checker.CheckerPluginId)</td>
                                         <td>
-                                            <MudChip T="string" Color="StatusColorHelper.ToMudColor(GetCheckerStatus(checker.CheckerPluginId))" Size="Size.Small">
-                                                @StatusColorHelper.ToLabel(GetCheckerStatus(checker.CheckerPluginId))
-                                            </MudChip>
+                                            <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
                                         </td>
                                     </tr>
                                 }
@@ -303,13 +301,11 @@ else
                             <tr>
                                 <td>@CheckerDisplayName(change.CheckerId)</td>
                                 <td>
-                                    <MudChip T="string" Color="StatusColorHelper.ToMudColor(change.PreviousStatus)" Size="Size.Small">
-                                        @StatusColorHelper.ToLabel(change.PreviousStatus)
-                                    </MudChip>
-                                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                    <MudChip T="string" Color="StatusColorHelper.ToMudColor(change.CurrentStatus)" Size="Size.Small">
-                                        @StatusColorHelper.ToLabel(change.CurrentStatus)
-                                    </MudChip>
+                                    <div class="d-flex align-center gap-1">
+                                        <StatusIndicator Status="@change.PreviousStatus" />
+                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                                        <StatusIndicator Status="@change.CurrentStatus" />
+                                    </div>
                                 </td>
                                 <td>
                                     <MudTooltip Text="@change.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")">
@@ -382,9 +378,7 @@ else
                             </MudTooltip>
                         </MudTd>
                         <MudTd DataLabel="Status">
-                            <MudChip T="string" Color="StatusColorHelper.ToMudColor(context.Status)" Size="Size.Small">
-                                @StatusColorHelper.ToLabel(context.Status)
-                            </MudChip>
+                            <StatusIndicator Status="@context.Status" />
                         </MudTd>
                         <MudTd DataLabel="Summary">@context.Summary</MudTd>
                     </RowTemplate>
@@ -604,9 +598,7 @@ else
                                     }
                                 </td>
                                 <td>
-                                    <MudChip T="string" Color="StatusColorHelper.ToMudColor(GetCheckerStatus(checker.CheckerPluginId))" Size="Size.Small">
-                                        @StatusColorHelper.ToLabel(GetCheckerStatus(checker.CheckerPluginId))
-                                    </MudChip>
+                                    <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
                                 </td>
                                 <td style="white-space:nowrap;">
                                     @if (checker.SourceType == "Direct")

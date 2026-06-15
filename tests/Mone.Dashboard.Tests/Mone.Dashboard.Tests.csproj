@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Mone.Dashboard\Mone.Dashboard.csproj" />
+    <ProjectReference Include="..\Mone.ScreenshotHarness\Mone.ScreenshotHarness.csproj" />
   </ItemGroup>
 
 </Project>

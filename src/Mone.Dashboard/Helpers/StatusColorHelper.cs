@@ -22,4 +22,13 @@ public static class StatusColorHelper
         MonitoringStatus.Unreachable => "Unreachable",
         _ => "Unknown"
     };
+
+    public static string ToIcon(MonitoringStatus status) => status switch
+    {
+        MonitoringStatus.Healthy => Icons.Material.Filled.CheckCircle,
+        MonitoringStatus.Degraded => Icons.Material.Filled.Warning,
+        MonitoringStatus.Unhealthy => Icons.Material.Filled.Error,
+        MonitoringStatus.Unreachable => Icons.Material.Filled.CloudOff,
+        _ => Icons.Material.Filled.Help
+    };
 }

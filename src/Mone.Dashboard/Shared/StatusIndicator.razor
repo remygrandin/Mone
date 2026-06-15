@@ -1,0 +1,9 @@
+<MudChip T="string"
+         Color="@StatusColorHelper.ToMudColor(Status)"
+         Icon="@StatusColorHelper.ToIcon(Status)"
+         Size="@Size">@StatusColorHelper.ToLabel(Status)</MudChip>
+
+@code {
+    [Parameter] public MonitoringStatus Status { get; set; }
+    [Parameter] public Size Size { get; set; } = Size.Small;
+}

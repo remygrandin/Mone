@@ -4,8 +4,6 @@
 
 <PageTitle>Mone Dashboard</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom="true">Dashboard</MudText>
-
 @if (_loading)
 {
     <LoadingIndicator />
@@ -16,62 +14,71 @@ else if (_error is not null)
 }
 else if (_summary is not null)
 {
-    <MudGrid>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard>
-                <MudCardContent Class="d-flex flex-column align-center">
-                    <MudText Typo="Typo.h3">@_summary.TotalHosts</MudText>
-                    <MudText Typo="Typo.subtitle1">Total Hosts</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Style="@($"border-left: 4px solid {Colors.Green.Default}")">
-                <MudCardContent Class="d-flex flex-column align-center">
-                    <MudText Typo="Typo.h3" Color="Color.Success">@_summary.Healthy</MudText>
-                    <MudText Typo="Typo.subtitle1">Healthy</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Style="@($"border-left: 4px solid {Colors.Orange.Default}")">
-                <MudCardContent Class="d-flex flex-column align-center">
-                    <MudText Typo="Typo.h3" Color="Color.Warning">@_summary.Degraded</MudText>
-                    <MudText Typo="Typo.subtitle1">Degraded</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Style="@($"border-left: 4px solid {Colors.Red.Default}")">
-                <MudCardContent Class="d-flex flex-column align-center">
-                    <MudText Typo="Typo.h3" Color="Color.Error">@_summary.Unhealthy</MudText>
-                    <MudText Typo="Typo.subtitle1">Unhealthy</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Style="@($"border-left: 4px solid {Colors.Gray.Default}")">
-                <MudCardContent Class="d-flex flex-column align-center">
-                    <MudText Typo="Typo.h3" Color="Color.Dark">@_summary.Unreachable</MudText>
-                    <MudText Typo="Typo.subtitle1">Unreachable</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4" lg="2">
-            <MudCard Style="@($"border-left: 4px solid {Colors.Gray.Lighten1}")">
-                <MudCardContent Class="d-flex flex-column align-center">
-                    <MudText Typo="Typo.h3" Color="Color.Default">@_summary.Unknown</MudText>
-                    <MudText Typo="Typo.subtitle1">Unknown</MudText>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    </MudGrid>
+    <div class="obs-head">
+        <div>
+            <h1 class="obs-title">Dashboard</h1>
+            <div class="obs-sub">Fleet telemetry · <span class="obs-mono">@_summary.TotalHosts hosts</span> monitored</div>
+        </div>
+        <div class="obs-uptime">
+            <div class="obs-cap">Healthy share</div>
+            <div class="obs-uptime-val">@HealthyShare</div>
+        </div>
+    </div>
+
+    <div class="obs-grid">
+        <div class="obs-tile obs-tile--total">
+            <div class="obs-tile__num">@_summary.TotalHosts</div>
+            <div class="obs-tile__label">
+                <MudIcon Icon="@Icons.Material.Filled.Dns" />
+                Total Hosts
+            </div>
+        </div>
+        <div class="obs-tile obs-tile--healthy">
+            <div class="obs-tile__num">@_summary.Healthy</div>
+            <div class="obs-tile__label">
+                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Healthy)" />
+                @StatusColorHelper.ToLabel(MonitoringStatus.Healthy)
+            </div>
+        </div>
+        <div class="obs-tile obs-tile--degraded">
+            <div class="obs-tile__num">@_summary.Degraded</div>
+            <div class="obs-tile__label">
+                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Degraded)" />
+                @StatusColorHelper.ToLabel(MonitoringStatus.Degraded)
+            </div>
+        </div>
+        <div class="obs-tile obs-tile--unhealthy">
+            <div class="obs-tile__num">@_summary.Unhealthy</div>
+            <div class="obs-tile__label">
+                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Unhealthy)" />
+                @StatusColorHelper.ToLabel(MonitoringStatus.Unhealthy)
+            </div>
+        </div>
+        <div class="obs-tile obs-tile--unreachable">
+            <div class="obs-tile__num">@_summary.Unreachable</div>
+            <div class="obs-tile__label">
+                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Unreachable)" />
+                @StatusColorHelper.ToLabel(MonitoringStatus.Unreachable)
+            </div>
+        </div>
+        <div class="obs-tile obs-tile--unknown">
+            <div class="obs-tile__num">@_summary.Unknown</div>
+            <div class="obs-tile__label">
+                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Unknown)" />
+                @StatusColorHelper.ToLabel(MonitoringStatus.Unknown)
+            </div>
+        </div>
+    </div>
 }
 
 @code {
     private bool _loading = true;
     private string? _error;
     private DashboardSummaryResponse? _summary;
+
+    private string HealthyShare => _summary is { TotalHosts: > 0 } s
+        ? $"{(double)s.Healthy / s.TotalHosts * 100:0.#}%"
+        : "—";
 
     protected override async Task OnInitializedAsync()
     {

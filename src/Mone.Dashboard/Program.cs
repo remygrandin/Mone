@@ -17,6 +17,7 @@ builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredServ
 builder.Services.AddScoped<AuthorizationMessageHandler>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<PermissionState>();
+builder.Services.AddScoped<ThemeService>();
 
 builder.Services.AddScoped(sp =>
 {

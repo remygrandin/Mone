@@ -19,6 +19,7 @@
     <Project Path="tests/Mone.AlertEngine.Tests/Mone.AlertEngine.Tests.csproj" />
     <Project Path="tests/Mone.ProbeExecutor.Tests/Mone.ProbeExecutor.Tests.csproj" />
     <Project Path="tests/Mone.Dashboard.Tests/Mone.Dashboard.Tests.csproj" />
+    <Project Path="tests/Mone.ScreenshotHarness/Mone.ScreenshotHarness.csproj" />
   </Folder>
   <Folder Name="/tests/TestPlugins/">
     <Project Path="tests/TestPlugins/TestProbePlugin/TestProbePlugin.csproj" />

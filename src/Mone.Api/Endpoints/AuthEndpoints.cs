@@ -32,7 +32,7 @@ public static class AuthEndpoints
             }
 
             logger.LogInformation("User registered: {UserId}, Email={Email}", user.Id, user.Email);
-            return Results.Created($"/api/auth/me", new UserResponse(user.Id, user.Email!));
+            return Results.Created($"/api/auth/me", new UserResponse(user.Id, user.Email!, "System"));
         })
         .WithName("Register")
         .WithSummary("Register a new local user account with an email and password.")
@@ -61,16 +61,53 @@ public static class AuthEndpoints
         .Produces<TokenResponse>()
         .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        group.MapGet("/me", (ClaimsPrincipal principal) =>
+        group.MapGet("/me", async (
+            ClaimsPrincipal principal,
+            UserManager<UserEntity> userManager) =>
         {
-            var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier)!;
-            var email = principal.FindFirstValue(ClaimTypes.Email)!;
-            return Results.Ok(new UserResponse(userId, email));
+            var user = await userManager.FindByIdAsync(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            return Results.Ok(new UserResponse(user.Id, user.Email!, user.ThemePreference ?? "System"));
         })
         .WithName("Me")
-        .WithSummary("Get the currently authenticated user's id and email from the bearer token.")
+        .WithSummary("Get the currently authenticated user's id, email, and stored theme preference (defaults to System).")
         .RequireAuthorization()
         .Produces<UserResponse>();
+
+        group.MapPut("/me/theme", async (
+            [FromBody] UpdateThemeRequest request,
+            UserManager<UserEntity> userManager,
+            ClaimsPrincipal principal,
+            ILogger<Program> logger) =>
+        {
+            if (request.Theme is not ("Light" or "Dark" or "System"))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["Theme"] = new[] { "Theme must be Light, Dark, or System." }
+                });
+            }
+
+            var user = await userManager.FindByIdAsync(principal.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            if (user is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            user.ThemePreference = request.Theme;
+            await userManager.UpdateAsync(user);
+            logger.LogInformation("Theme preference updated: {UserId}, Theme={Theme}", user.Id, request.Theme);
+            return Results.NoContent();
+        })
+        .WithName("UpdateTheme")
+        .WithSummary("Persist the authenticated user's Light/Dark/System theme preference.")
+        .RequireAuthorization()
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesValidationProblem();
 
         return routes;
     }

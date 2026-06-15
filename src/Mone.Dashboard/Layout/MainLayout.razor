@@ -4,12 +4,15 @@
 @using Mone.Dashboard.Auth
 @using Mone.Dashboard.Services
 @using Mone.Dashboard.Models
+@using Mone.Dashboard.Theme
 @inject AuthService AuthService
 @inject JwtAuthStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject PermissionState Permissions
+@inject ThemeService ThemeService
+@inject ApiClient ApiClient
 
-<MudThemeProvider />
+<MudThemeProvider @ref="_themeProvider" Theme="MoneTheme.Instance" IsDarkMode="ThemeService.IsDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -22,11 +25,23 @@
                                OnClick="@ToggleDrawer" />
                 <MudText Typo="Typo.h5" Class="ml-3">Mone Dashboard</MudText>
                 <MudSpacer />
+                <MudMenu Icon="@_themeMenuIcon" Color="Color.Inherit" AriaLabel="Theme mode">
+                    <MudMenuItem Icon="@Icons.Material.Filled.LightMode" OnClick="@(() => SetThemeMode(ThemeMode.Light))">Light</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.DarkMode" OnClick="@(() => SetThemeMode(ThemeMode.Dark))">Dark</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.BrightnessAuto" OnClick="@(() => SetThemeMode(ThemeMode.System))">System</MudMenuItem>
+                </MudMenu>
                 <MudButton Color="Color.Inherit" OnClick="HandleLogout">Logout</MudButton>
             </MudAppBar>
             <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
                 <MudNavMenu>
+                    @* Overview *@
                     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
+
+                    @* Monitoring *@
+                    @if (Permissions.Has(PermissionResource.Hosts) || Permissions.Has(PermissionResource.Groups) || Permissions.Has(PermissionResource.Notifications))
+                    {
+                        <MudDivider Class="my-2" />
+                    }
                     @if (Permissions.Has(PermissionResource.Hosts))
                     {
                         <MudNavLink Href="/hosts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Hosts</MudNavLink>
@@ -39,18 +54,29 @@
                     {
                         <MudNavLink Href="/notifications" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Notifications">Notifications</MudNavLink>
                     }
+
+                    @* Infrastructure *@
+                    @if (Permissions.Has(PermissionResource.ExecutorNodes) || Permissions.Has(PermissionResource.Plugins))
+                    {
+                        <MudDivider Class="my-2" />
+                    }
                     @if (Permissions.Has(PermissionResource.ExecutorNodes))
                     {
-                        <MudNavLink Href="/nodes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Hub">Nodes</MudNavLink>
+                        <MudNavLink Href="/nodes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Hub">Executor Nodes</MudNavLink>
                     }
                     @if (Permissions.Has(PermissionResource.Plugins))
                     {
                         <MudNavLink Href="/plugins" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Extension">Plugins</MudNavLink>
                     }
+
+                    @* Maintenance *@
                     @if (Permissions.Has(PermissionResource.System))
                     {
+                        <MudDivider Class="my-2" />
                         <MudNavLink Href="/housekeeping" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CleaningServices">Housekeeping</MudNavLink>
                     }
+
+                    @* Administration *@
                     @if (Permissions.Has(PermissionResource.Administration))
                     {
                         <MudDivider Class="my-2" />
@@ -75,12 +101,37 @@
 
 @code {
     private bool _drawerOpen = true;
+    private MudThemeProvider _themeProvider = null!;
+
+    private string _themeMenuIcon => ThemeService.Mode switch
+    {
+        ThemeMode.Light => Icons.Material.Filled.LightMode,
+        ThemeMode.Dark => Icons.Material.Filled.DarkMode,
+        _ => Icons.Material.Filled.BrightnessAuto,
+    };
 
     protected override async Task OnInitializedAsync()
     {
+        ThemeService.Changed += OnThemeChanged;
         AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         await LoadPermissionsAsync(await AuthStateProvider.GetAuthenticationStateAsync());
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            ThemeService.SetSystemPreference(await _themeProvider.GetSystemPreference());
+            await _themeProvider.WatchSystemPreference(prefersDark =>
+            {
+                ThemeService.SetSystemPreference(prefersDark);
+                return Task.CompletedTask;
+            });
+            StateHasChanged();
+        }
+    }
+
+    private void OnThemeChanged() => _ = InvokeAsync(StateHasChanged);
 
     private void OnAuthenticationStateChanged(Task<AuthenticationState> task)
     {
@@ -98,10 +149,19 @@
             try
             {
                 await Permissions.EnsureLoadedAsync(force: true);
+                var me = await ApiClient.GetMeAsync();
+                if (me is not null)
+                {
+                    var mode = Enum.TryParse<ThemeMode>(me.ThemePreference, out var parsed)
+                        ? parsed
+                        : ThemeMode.System;
+                    ThemeService.SetMode(mode);
+                }
             }
             catch
             {
-                // Navigation simply hides gated links if capabilities can't be loaded.
+                // Navigation simply hides gated links if capabilities can't be loaded;
+                // a failed theme load is non-fatal and leaves the default System mode.
             }
         }
         else
@@ -112,12 +172,20 @@
 
     public void Dispose()
     {
+        ThemeService.Changed -= OnThemeChanged;
         AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
     }
 
     private void ToggleDrawer()
     {
         _drawerOpen = !_drawerOpen;
+    }
+
+    private void SetThemeMode(ThemeMode mode)
+    {
+        ThemeService.SetMode(mode);
+        // Fire-and-forget persistence; an API failure must never block the UI.
+        _ = ApiClient.UpdateThemeAsync(mode.ToString());
     }
 
     private async Task HandleLogout()

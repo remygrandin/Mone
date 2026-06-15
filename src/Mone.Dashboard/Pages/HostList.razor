@@ -48,11 +48,7 @@
             </TemplateColumn>
             <TemplateColumn Title="Status">
                 <CellTemplate>
-                    <MudChip T="string"
-                             Color="StatusColorHelper.ToMudColor(context.Item.Status)"
-                             Size="Size.Small">
-                        @StatusColorHelper.ToLabel(context.Item.Status)
-                    </MudChip>
+                    <StatusIndicator Status="@context.Item.Status" />
                 </CellTemplate>
             </TemplateColumn>
             <TemplateColumn Title="Tags">

@@ -34,7 +34,7 @@ else
     <MudTimeline TimelinePosition="TimelinePosition.Start">
         @foreach (var entry in _history)
         {
-            <MudTimelineItem Color="StatusColorHelper.ToMudColor(entry.CurrentStatus)" Size="Size.Medium">
+            <MudTimelineItem Color="Color.Default" Size="Size.Medium">
                 <ItemContent>
                     <MudCard Outlined="true" Class="mb-2">
                         <MudCardContent>
@@ -45,13 +45,9 @@ else
                                 <strong>@ResolveCheckerName(entry.CheckerId)</strong>
                             </MudText>
                             <div class="d-flex align-center gap-2 mt-1">
-                                <MudChip T="string" Color="StatusColorHelper.ToMudColor(entry.PreviousStatus)" Size="Size.Small">
-                                    @StatusColorHelper.ToLabel(entry.PreviousStatus)
-                                </MudChip>
+                                <StatusIndicator Status="@entry.PreviousStatus" />
                                 <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                                <MudChip T="string" Color="StatusColorHelper.ToMudColor(entry.CurrentStatus)" Size="Size.Small">
-                                    @StatusColorHelper.ToLabel(entry.CurrentStatus)
-                                </MudChip>
+                                <StatusIndicator Status="@entry.CurrentStatus" />
                             </div>
                         </MudCardContent>
                     </MudCard>

@@ -123,6 +123,12 @@ public sealed class ApiClient
 
     // ---- IAM (roles, users, permissions) ----
 
+    public async Task<UserResponse?> GetMeAsync() =>
+        await GetAsync<UserResponse>("api/auth/me");
+
+    public async Task UpdateThemeAsync(string theme) =>
+        await PutAsync("api/auth/me/theme", new UpdateThemeRequest(theme));
+
     public async Task<MyPermissionsResponse?> GetMyPermissionsAsync() =>
         await GetAsync<MyPermissionsResponse>("api/auth/me/permissions");
 

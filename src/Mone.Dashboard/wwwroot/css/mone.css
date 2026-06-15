@@ -1,0 +1,243 @@
+/* ============================================================================
+   Mone — "Observatory" identity layer
+   Sits on top of MudBlazor. Goal: a telemetry deck that does not read as a
+   default MudBlazor app, WITHOUT touching the CVD-validated status palette.
+
+   Discipline:
+   - Every status hue is read from the existing --mud-palette-* tokens that
+     MoneTheme maps from MonePalette. We never restate a status hex here, so the
+     colorblind-safe contract stays the single source of truth.
+   - Panels stay flat on the validated --mud-palette-surface; only the page and
+     the chrome carry the atmospheric gradient, so status-on-surface contrast is
+     exactly what the test gate validated.
+   ========================================================================== */
+
+:root {
+  --mone-iris: #6E5FE6;
+  --mone-iris-soft: rgba(110, 95, 230, .14);
+  --mone-grid: rgba(20, 24, 40, .035);
+  --mone-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --mone-radius: 14px;
+}
+
+.mud-theme-dark {
+  --mone-iris: #8B7DFF;
+  --mone-iris-soft: rgba(139, 125, 255, .16);
+  --mone-grid: rgba(255, 255, 255, .02);
+}
+
+/* ---- Atmospheric page field ------------------------------------------------
+   Painted on a fixed pseudo-layer behind everything. Light = warm paper wash,
+   dark = deep ink with an iris aurora. Panels render above this on their own
+   opaque surface, so contrast under content is untouched. */
+#app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--mud-palette-background);
+  background-image:
+    radial-gradient(1100px 620px at 82% -10%, var(--mone-iris-soft), transparent 60%),
+    radial-gradient(820px 560px at -5% 108%, rgba(15, 122, 82, .06), transparent 55%),
+    linear-gradient(transparent 0 31px, var(--mone-grid) 31px 32px),
+    linear-gradient(90deg, transparent 0 31px, var(--mone-grid) 31px 32px);
+  background-size: auto, auto, 32px 32px, 32px 32px;
+}
+
+.mud-theme-dark #app::before {
+  background-color: #0B0E14;
+}
+
+/* Let the field show through the main content + layout chrome. */
+.mud-layout,
+.mud-main-content {
+  background: transparent !important;
+}
+
+/* ---- App bar: translucent observation header ------------------------------ */
+.mud-appbar.mud-appbar-fixed-top {
+  background: color-mix(in srgb, var(--mud-palette-surface) 72%, transparent) !important;
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  border-bottom: 1px solid var(--mud-palette-lines-default);
+  box-shadow: none !important;
+  /* The bar is now a light/translucent surface, so its inherited content colour
+     must follow the theme text colour instead of MudBlazor's default white —
+     otherwise the wordmark and icons vanish on the light surface. */
+  color: var(--mud-palette-text-primary) !important;
+}
+
+/* Brand wordmark — letter-spaced mono, the signature of the deck. */
+.mud-appbar .mud-typography-h5 {
+  font-family: var(--mone-mono) !important;
+  font-weight: 600;
+  font-size: 1.05rem !important;
+  letter-spacing: .34em;
+  text-transform: uppercase;
+}
+
+/* ---- Drawer: instrument rail ---------------------------------------------- */
+.mud-drawer {
+  background: color-mix(in srgb, var(--mud-palette-surface) 86%, transparent) !important;
+  border-right: 1px solid var(--mud-palette-lines-default) !important;
+}
+
+.mud-nav-link {
+  border-radius: 10px;
+  margin: 2px 8px;
+  font-size: .88rem;
+  font-weight: 500;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.mud-nav-link:hover {
+  background: var(--mud-palette-action-default-hover);
+}
+
+/* Active nav: iris wash + a glowing edge marker instead of MudBlazor's slab. */
+.mud-nav-link.active {
+  background: linear-gradient(90deg, var(--mone-iris-soft), transparent 85%) !important;
+  color: var(--mud-palette-text-primary) !important;
+  position: relative;
+}
+
+.mud-nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--mone-iris);
+  box-shadow: 0 0 12px 1px var(--mone-iris);
+}
+
+.mud-nav-link.active .mud-icon-root {
+  color: var(--mone-iris) !important;
+}
+
+.mud-nav-group .mud-divider {
+  border-color: var(--mud-palette-lines-default);
+}
+
+/* ============================================================================
+   Dashboard — telemetry tiles
+   ========================================================================== */
+
+.obs-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.obs-title {
+  font-size: 1.7rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.obs-sub {
+  margin-top: 6px;
+  color: var(--mud-palette-text-secondary);
+  font-size: .82rem;
+}
+
+.obs-sub .obs-mono {
+  font-family: var(--mone-mono);
+  color: var(--mud-palette-text-primary);
+}
+
+.obs-uptime {
+  text-align: right;
+}
+
+.obs-uptime .obs-cap {
+  font-family: var(--mone-mono);
+  text-transform: uppercase;
+  letter-spacing: .2em;
+  font-size: .58rem;
+  color: var(--mud-palette-text-disabled);
+}
+
+.obs-uptime .obs-uptime-val {
+  font-family: var(--mone-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--mud-palette-success);
+  letter-spacing: -.02em;
+  margin-top: 2px;
+}
+
+.obs-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 1280px) { .obs-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 720px)  { .obs-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.obs-tile {
+  --edge: var(--mud-palette-text-secondary);
+  position: relative;
+  overflow: hidden;
+  background: var(--mud-palette-surface);
+  border: 1px solid var(--mud-palette-lines-default);
+  border-radius: var(--mone-radius);
+  padding: 16px 16px 15px;
+}
+
+/* Status edge — the dual-encoding stays color + icon + label; this bar is an
+   extra, never the only signal. */
+.obs-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--edge);
+  opacity: .9;
+}
+
+.obs-tile__num {
+  font-family: var(--mone-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 2.5rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -.03em;
+  margin: 2px 0 12px;
+  color: var(--edge);
+}
+
+.obs-tile--total { --edge: var(--mone-iris); }
+.obs-tile--total .obs-tile__num { color: var(--mud-palette-text-primary); }
+.obs-tile--healthy     { --edge: var(--mud-palette-success); }
+.obs-tile--degraded    { --edge: var(--mud-palette-warning); }
+.obs-tile--unhealthy   { --edge: var(--mud-palette-error); }
+.obs-tile--unreachable { --edge: var(--mud-palette-dark); }
+.obs-tile--unknown     { --edge: var(--mud-palette-text-secondary); }
+
+.obs-tile__label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .78rem;
+  color: var(--mud-palette-text-secondary);
+}
+
+.obs-tile__label .mud-icon-root {
+  font-size: 1.05rem;
+  color: var(--edge);
+}
+
+.obs-tile--total .obs-tile__label .mud-icon-root {
+  color: var(--mone-iris);
+}
