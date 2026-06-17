@@ -123,121 +123,386 @@
 }
 
 /* ============================================================================
-   Dashboard — telemetry tiles
+   Dashboard — "Fleet Command"
+   A mission-control deck: a verdict band that states the fleet's condition in
+   words, a proportional spectrum bar, and a worst-first matrix of host cells.
+
+   Status hues are read ONLY from --mud-palette-* tokens (--sc carries the hue
+   for the element's status class), so the CVD-validated palette stays the
+   single source of truth. Encoding is always colour + icon + label.
    ========================================================================== */
 
-.obs-head {
+/* Per-status hue carrier — every status-bearing element gets one of these. */
+.s-h { --sc: var(--mud-palette-success); }
+.s-d { --sc: var(--mud-palette-warning); }
+.s-u { --sc: var(--mud-palette-error); }
+.s-r { --sc: var(--mud-palette-dark); }
+.s-k { --sc: var(--mud-palette-text-secondary); }
+
+/* ---- Head ----------------------------------------------------------------- */
+.fc-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 22px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
-.obs-title {
+.fc-title {
   font-size: 1.7rem;
   font-weight: 600;
-  letter-spacing: -.01em;
+  letter-spacing: -.015em;
   margin: 0;
   line-height: 1.1;
 }
 
-.obs-sub {
+.fc-sub {
   margin-top: 6px;
   color: var(--mud-palette-text-secondary);
   font-size: .82rem;
 }
 
-.obs-sub .obs-mono {
+.fc-sub .fc-mono {
   font-family: var(--mone-mono);
   color: var(--mud-palette-text-primary);
 }
 
-.obs-uptime {
-  text-align: right;
+/* ---- Hero: verdict band + spectrum ---------------------------------------- */
+.fc-hero {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  background: var(--mud-palette-surface);
+  border: 1px solid var(--mud-palette-lines-default);
+  border-radius: var(--mone-radius);
+  overflow: hidden;
+  margin-bottom: 24px;
 }
 
-.obs-uptime .obs-cap {
+@media (max-width: 900px) { .fc-hero { grid-template-columns: 1fr; } }
+
+.fc-verdict {
+  position: relative;
+  overflow: hidden;
+  padding: 22px 24px;
+  border-right: 1px solid var(--mud-palette-lines-default);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .fc-verdict { border-right: 0; border-bottom: 1px solid var(--mud-palette-lines-default); }
+}
+
+/* The verdict reads as a lit signal: an --sc edge bar plus a soft wash of the
+   same hue, so the fleet's condition is legible at a glance. */
+.fc-verdict::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--sc);
+}
+
+.fc-verdict::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(220px 150px at 0% 0%, var(--sc), transparent 70%);
+  opacity: .08;
+  pointer-events: none;
+}
+
+.fc-verdict__state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fc-verdict__state .mud-icon-root {
+  font-size: 1.5rem;
+  color: var(--sc);
+}
+
+.fc-verdict__word {
   font-family: var(--mone-mono);
-  text-transform: uppercase;
-  letter-spacing: .2em;
-  font-size: .58rem;
-  color: var(--mud-palette-text-disabled);
+  font-weight: 600;
+  font-size: 1.35rem;
+  letter-spacing: .06em;
+  color: var(--sc);
 }
 
-.obs-uptime .obs-uptime-val {
+.fc-verdict__desc {
+  color: var(--mud-palette-text-secondary);
+  font-size: .8rem;
+  line-height: 1.5;
+  margin-top: 9px;
+  max-width: 250px;
+}
+
+.fc-verdict__meta {
+  display: flex;
+  gap: 24px;
+  margin-top: 18px;
+}
+
+.fc-k {
   font-family: var(--mone-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 1.5rem;
+  font-size: 1.45rem;
   font-weight: 600;
-  color: var(--mud-palette-success);
   letter-spacing: -.02em;
+  color: var(--mud-palette-text-primary);
+}
+
+.fc-kl {
+  font-family: var(--mone-mono);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-size: .62rem;
+  color: var(--mud-palette-text-disabled);
   margin-top: 2px;
 }
 
-.obs-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 14px;
+/* ---- Spectrum ------------------------------------------------------------- */
+.fc-spectrum {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-@media (max-width: 1280px) { .obs-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 720px)  { .obs-grid { grid-template-columns: repeat(2, 1fr); } }
+.fc-spec-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 13px;
+  flex-wrap: wrap;
+}
 
-.obs-tile {
-  --edge: var(--mud-palette-text-secondary);
+.fc-share {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.fc-share__big {
+  font-family: var(--mone-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 2.4rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -.03em;
+  color: var(--mud-palette-success);
+}
+
+.fc-share__lbl {
+  font-family: var(--mone-mono);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-size: .66rem;
+  color: var(--mud-palette-text-disabled);
+}
+
+.fc-spec-count {
+  font-family: var(--mone-mono);
+  font-size: .76rem;
+  color: var(--mud-palette-text-secondary);
+}
+
+.fc-bar {
+  display: flex;
+  height: 46px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--mud-palette-lines-default);
+}
+
+/* Segment fill is the status hue; text colour flips by theme so it stays
+   legible on both light (dark hues) and dark (bright hues) palettes. */
+.fc-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  background: var(--sc);
+  color: #fff;
+  font-family: var(--mone-mono);
+  font-weight: 600;
+  font-size: .8rem;
+  overflow: hidden;
+}
+
+.mud-theme-dark .fc-seg { color: #0B0E14; }
+
+.fc-seg .mud-icon-root { font-size: .95rem; flex: none; }
+.fc-seg__n { overflow: hidden; }
+
+.fc-legend {
+  display: flex;
+  gap: 8px;
+  margin-top: 13px;
+  flex-wrap: wrap;
+}
+
+.fc-lg {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--mud-palette-lines-default);
+  font-size: .76rem;
+  color: var(--mud-palette-text-secondary);
+}
+
+.fc-lg .mud-icon-root { font-size: .95rem; color: var(--sc); }
+
+.fc-lg__c {
+  font-family: var(--mone-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--mud-palette-text-primary);
+  font-size: .8rem;
+}
+
+/* ---- Matrix head ---------------------------------------------------------- */
+.fc-mhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 2px 13px;
+}
+
+.fc-mhead__t {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fc-mhead h2 {
+  font-size: .95rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: .01em;
+}
+
+.fc-msort {
+  font-family: var(--mone-mono);
+  font-size: .68rem;
+  color: var(--mud-palette-text-disabled);
+}
+
+.fc-empty {
+  border: 1px dashed var(--mud-palette-lines-default);
+  border-radius: var(--mone-radius);
+  padding: 28px;
+  text-align: center;
+  color: var(--mud-palette-text-secondary);
+  font-size: .85rem;
+}
+
+/* ---- Matrix --------------------------------------------------------------- */
+.fc-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 12px;
+}
+
+.fc-cell {
   position: relative;
   overflow: hidden;
   background: var(--mud-palette-surface);
   border: 1px solid var(--mud-palette-lines-default);
-  border-radius: var(--mone-radius);
-  padding: 16px 16px 15px;
+  border-radius: 12px;
+  padding: 13px 14px 12px;
+  cursor: pointer;
+  transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
 }
 
-/* Status edge — the dual-encoding stays color + icon + label; this bar is an
-   extra, never the only signal. */
-.obs-tile::after {
+.fc-cell::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: var(--edge);
-  opacity: .9;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--sc);
 }
 
-.obs-tile__num {
-  font-family: var(--mone-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 2.5rem;
-  line-height: 1;
-  font-weight: 600;
-  letter-spacing: -.03em;
-  margin: 2px 0 12px;
-  color: var(--edge);
+.fc-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120px 80px at 0% 0%, var(--sc), transparent 70%);
+  opacity: .06;
+  pointer-events: none;
 }
 
-.obs-tile--total { --edge: var(--mone-iris); }
-.obs-tile--total .obs-tile__num { color: var(--mud-palette-text-primary); }
-.obs-tile--healthy     { --edge: var(--mud-palette-success); }
-.obs-tile--degraded    { --edge: var(--mud-palette-warning); }
-.obs-tile--unhealthy   { --edge: var(--mud-palette-error); }
-.obs-tile--unreachable { --edge: var(--mud-palette-dark); }
-.obs-tile--unknown     { --edge: var(--mud-palette-text-secondary); }
+.fc-cell:hover {
+  transform: translateY(-2px);
+  border-color: var(--mone-iris);
+  box-shadow: 0 14px 30px -16px rgba(0, 0, 0, .55);
+}
 
-.obs-tile__label {
+.fc-cell__row {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: .78rem;
-  color: var(--mud-palette-text-secondary);
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 11px;
 }
 
-.obs-tile__label .mud-icon-root {
-  font-size: 1.05rem;
-  color: var(--edge);
+.fc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mone-mono);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--sc);
 }
 
-.obs-tile--total .obs-tile__label .mud-icon-root {
-  color: var(--mone-iris);
+.fc-badge .mud-icon-root { font-size: .95rem; color: var(--sc); }
+
+.fc-led {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--sc);
+  flex: none;
 }
+
+.fc-cname {
+  font-family: var(--mone-mono);
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--mud-palette-text-primary);
+  letter-spacing: -.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-cmeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  font-family: var(--mone-mono);
+  font-size: .72rem;
+  color: var(--mud-palette-text-disabled);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-cmeta .fc-tagn { color: var(--mud-palette-text-secondary); }

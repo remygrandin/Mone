@@ -1,6 +1,7 @@
 @page "/"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @inject ApiClient Api
+@inject NavigationManager Nav
 
 <PageTitle>Mone Dashboard</PageTitle>
 
@@ -14,77 +15,211 @@ else if (_error is not null)
 }
 else if (_summary is not null)
 {
-    <div class="obs-head">
+    var v = Verdict;
+
+    <div class="fc-head">
         <div>
-            <h1 class="obs-title">Dashboard</h1>
-            <div class="obs-sub">Fleet telemetry · <span class="obs-mono">@_summary.TotalHosts hosts</span> monitored</div>
-        </div>
-        <div class="obs-uptime">
-            <div class="obs-cap">Healthy share</div>
-            <div class="obs-uptime-val">@HealthyShare</div>
+            <h1 class="fc-title">Dashboard</h1>
+            <div class="fc-sub">Fleet telemetry · <span class="fc-mono">@_summary.TotalHosts hosts</span> monitored</div>
         </div>
     </div>
 
-    <div class="obs-grid">
-        <div class="obs-tile obs-tile--total">
-            <div class="obs-tile__num">@_summary.TotalHosts</div>
-            <div class="obs-tile__label">
-                <MudIcon Icon="@Icons.Material.Filled.Dns" />
-                Total Hosts
+    <div class="fc-hero">
+        <div class="fc-verdict @v.Cls">
+            <div class="fc-verdict__state">
+                <MudIcon Icon="@v.Icon" />
+                <span class="fc-verdict__word">@v.Word</span>
+            </div>
+            <div class="fc-verdict__desc">@v.Desc</div>
+            <div class="fc-verdict__meta">
+                <div>
+                    <div class="fc-k">@(_summary.Unhealthy + _summary.Unreachable)</div>
+                    <div class="fc-kl">Critical</div>
+                </div>
+                <div>
+                    <div class="fc-k">@_summary.Degraded</div>
+                    <div class="fc-kl">At risk</div>
+                </div>
+                <div>
+                    <div class="fc-k">@_summary.Unknown</div>
+                    <div class="fc-kl">Unverified</div>
+                </div>
             </div>
         </div>
-        <div class="obs-tile obs-tile--healthy">
-            <div class="obs-tile__num">@_summary.Healthy</div>
-            <div class="obs-tile__label">
-                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Healthy)" />
-                @StatusColorHelper.ToLabel(MonitoringStatus.Healthy)
+
+        <div class="fc-spectrum">
+            <div class="fc-spec-top">
+                <div class="fc-share">
+                    <span class="fc-share__big">@HealthyShare</span>
+                    <span class="fc-share__lbl">healthy share</span>
+                </div>
+                <span class="fc-spec-count">@_summary.Healthy / @_summary.TotalHosts hosts nominal</span>
             </div>
-        </div>
-        <div class="obs-tile obs-tile--degraded">
-            <div class="obs-tile__num">@_summary.Degraded</div>
-            <div class="obs-tile__label">
-                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Degraded)" />
-                @StatusColorHelper.ToLabel(MonitoringStatus.Degraded)
+
+            <div class="fc-bar">
+                @foreach (var b in Buckets.Where(b => b.Count > 0))
+                {
+                    <div class="fc-seg @StatusClass(b.Status)" style="flex:@b.Count"
+                         title="@StatusColorHelper.ToLabel(b.Status) @b.Count">
+                        <MudIcon Icon="@StatusColorHelper.ToIcon(b.Status)" />
+                        <span class="fc-seg__n">@b.Count</span>
+                    </div>
+                }
             </div>
-        </div>
-        <div class="obs-tile obs-tile--unhealthy">
-            <div class="obs-tile__num">@_summary.Unhealthy</div>
-            <div class="obs-tile__label">
-                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Unhealthy)" />
-                @StatusColorHelper.ToLabel(MonitoringStatus.Unhealthy)
-            </div>
-        </div>
-        <div class="obs-tile obs-tile--unreachable">
-            <div class="obs-tile__num">@_summary.Unreachable</div>
-            <div class="obs-tile__label">
-                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Unreachable)" />
-                @StatusColorHelper.ToLabel(MonitoringStatus.Unreachable)
-            </div>
-        </div>
-        <div class="obs-tile obs-tile--unknown">
-            <div class="obs-tile__num">@_summary.Unknown</div>
-            <div class="obs-tile__label">
-                <MudIcon Icon="@StatusColorHelper.ToIcon(MonitoringStatus.Unknown)" />
-                @StatusColorHelper.ToLabel(MonitoringStatus.Unknown)
+
+            <div class="fc-legend">
+                @foreach (var b in Buckets.Where(b => b.Count > 0))
+                {
+                    <div class="fc-lg @StatusClass(b.Status)">
+                        <MudIcon Icon="@StatusColorHelper.ToIcon(b.Status)" />
+                        @StatusColorHelper.ToLabel(b.Status)
+                        <span class="fc-lg__c">@b.Count</span>
+                    </div>
+                }
             </div>
         </div>
     </div>
+
+    <div class="fc-mhead">
+        <div class="fc-mhead__t">
+            <h2>Fleet</h2>
+            <span class="fc-msort">// sorted worst-first · select a host to drill in</span>
+        </div>
+    </div>
+
+    @if (_cells.Count == 0)
+    {
+        <div class="fc-empty">No hosts yet. Add a host to start monitoring the fleet.</div>
+    }
+    else
+    {
+        <div class="fc-matrix">
+            @foreach (var c in _cells)
+            {
+                <div class="fc-cell @StatusClass(c.Status)" @onclick="() => GoTo(c.Host.Id)">
+                    <div class="fc-cell__row">
+                        <span class="fc-badge">
+                            <MudIcon Icon="@StatusColorHelper.ToIcon(c.Status)" />
+                            @StatusColorHelper.ToLabel(c.Status)
+                        </span>
+                        <span class="fc-led"></span>
+                    </div>
+                    <div class="fc-cname">@c.Host.Name</div>
+                    <div class="fc-cmeta">
+                        @c.Host.Address
+                        @if (c.Host.Tags.Length > 0)
+                        {
+                            <span class="fc-tagn">· @c.Host.Tags[0].Name</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
 }
 
 @code {
     private bool _loading = true;
     private string? _error;
     private DashboardSummaryResponse? _summary;
+    private List<HostCell> _cells = [];
 
     private string HealthyShare => _summary is { TotalHosts: > 0 } s
         ? $"{(double)s.Healthy / s.TotalHosts * 100:0.#}%"
         : "—";
+
+    private IEnumerable<(MonitoringStatus Status, int Count)> Buckets
+    {
+        get
+        {
+            var s = _summary!;
+            yield return (MonitoringStatus.Healthy, s.Healthy);
+            yield return (MonitoringStatus.Degraded, s.Degraded);
+            yield return (MonitoringStatus.Unhealthy, s.Unhealthy);
+            yield return (MonitoringStatus.Unreachable, s.Unreachable);
+            yield return (MonitoringStatus.Unknown, s.Unknown);
+        }
+    }
+
+    private (string Word, string Cls, string Icon, string Desc) Verdict
+    {
+        get
+        {
+            var s = _summary!;
+            if (s.TotalHosts == 0)
+                return ("NO HOSTS", "s-k", StatusColorHelper.ToIcon(MonitoringStatus.Unknown),
+                    "No hosts are being monitored yet.");
+            if (s.Unhealthy > 0)
+                return ("CRITICAL", "s-u", StatusColorHelper.ToIcon(MonitoringStatus.Unhealthy),
+                    $"{s.Unhealthy} host{Plural(s.Unhealthy)} failing checks right now.");
+            if (s.Unreachable > 0)
+                return ("UNREACHABLE", "s-r", StatusColorHelper.ToIcon(MonitoringStatus.Unreachable),
+                    $"{s.Unreachable} host{Plural(s.Unreachable)} cannot be reached.");
+            if (s.Degraded > 0)
+                return ("DEGRADED", "s-d", StatusColorHelper.ToIcon(MonitoringStatus.Degraded),
+                    $"{s.Degraded} host{Plural(s.Degraded)} degraded and need attention.");
+            if (s.Healthy == 0)
+                return ("UNVERIFIED", "s-k", StatusColorHelper.ToIcon(MonitoringStatus.Unknown),
+                    "No host has reported a healthy check yet.");
+            if (s.Unknown > 0)
+                return ("OPERATIONAL", "s-h", StatusColorHelper.ToIcon(MonitoringStatus.Healthy),
+                    $"All reporting hosts are healthy · {s.Unknown} unverified.");
+            return ("OPERATIONAL", "s-h", StatusColorHelper.ToIcon(MonitoringStatus.Healthy),
+                "All hosts are healthy and reporting.");
+        }
+    }
+
+    private static string Plural(int n) => n == 1 ? "" : "s";
+
+    private static string StatusClass(MonitoringStatus s) => s switch
+    {
+        MonitoringStatus.Healthy => "s-h",
+        MonitoringStatus.Degraded => "s-d",
+        MonitoringStatus.Unhealthy => "s-u",
+        MonitoringStatus.Unreachable => "s-r",
+        _ => "s-k"
+    };
+
+    private static int SeverityRank(MonitoringStatus s) => s switch
+    {
+        MonitoringStatus.Unhealthy => 0,
+        MonitoringStatus.Unreachable => 1,
+        MonitoringStatus.Degraded => 2,
+        MonitoringStatus.Unknown => 3,
+        MonitoringStatus.Healthy => 4,
+        _ => 5
+    };
+
+    private void GoTo(Guid hostId) => Nav.NavigateTo($"/hosts/{hostId}");
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             _summary = await Api.GetDashboardSummaryAsync();
+
+            var hosts = await Api.GetHostsAsync(null);
+            var tasks = hosts.Select(async host =>
+            {
+                var status = MonitoringStatus.Unknown;
+                try
+                {
+                    var latest = await Api.GetLatestStatusAsync(host.Id);
+                    if (latest.Length > 0)
+                        status = latest.Max(s => s.CurrentStatus);
+                }
+                catch
+                {
+                    // Per-host status is best-effort: one host's failed fetch degrades to
+                    // Unknown so it never blocks rendering the rest of the matrix.
+                }
+                return new HostCell(host, status);
+            });
+
+            _cells = (await Task.WhenAll(tasks))
+                .OrderBy(c => SeverityRank(c.Status))
+                .ThenBy(c => c.Host.Name)
+                .ToList();
         }
         catch (ApiException ax)
         {
@@ -92,8 +227,10 @@ else if (_summary is not null)
         }
         catch (Exception)
         {
-            _error = "Unable to load the dashboard summary. Please try again.";
+            _error = "Unable to load the dashboard. Please try again.";
         }
         _loading = false;
     }
+
+    private sealed record HostCell(HostResponse Host, MonitoringStatus Status);
 }
