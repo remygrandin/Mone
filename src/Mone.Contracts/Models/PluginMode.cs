@@ -16,5 +16,6 @@ public enum InstantiationMode
 public enum CheckerInvocationMode
 {
     OnProbeResult = 1,
-    OnInterval = 2
+    OnInterval = 2,
+    OnLogEvent = 4
 }

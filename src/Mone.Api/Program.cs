@@ -209,6 +209,7 @@ if (app.Services.GetService<LdapEnabledFlag>() is not null)
     app.Logger.LogInformation("LDAP authentication provider enabled");
 }
 app.MapHostEndpoints();
+app.MapMaintenanceEndpoints();
 app.MapTagEndpoints();
 app.MapProbeAssignmentEndpoints();
 app.MapCheckerAssignmentEndpoints();

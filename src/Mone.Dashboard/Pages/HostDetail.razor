@@ -157,6 +157,43 @@ else
                     }
                 </MudItem>
             </MudGrid>
+
+            <MudText Typo="Typo.h6" Class="mb-2 mt-4">Probes</MudText>
+            @if (_effectiveProbes.Length == 0)
+            {
+                <MudAlert Severity="Severity.Info">No probes assigned to this host.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Hover="true" Dense="true" Elevation="0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Last Run</th>
+                            <th>Trigger</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var probe in _effectiveProbes)
+                        {
+                            <tr>
+                                <td>@ProbeRowHelper.ResolveDisplayName(ResolveProbeAssignmentName(probe.AssignmentId), probe.ProbePluginId)</td>
+                                <td>@ProbeRowHelper.FormatLastRun(GetLastRun(probe.ProbePluginId), DateTimeOffset.UtcNow)</td>
+                                <td>
+                                    @{
+                                        var dashIsPassive = IsPassiveProbe(probe.ProbePluginId);
+                                    }
+                                    <MudTooltip Text="@(dashIsPassive ? "Passive probes cannot be triggered manually" : "Trigger probe now")">
+                                        <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Color="Color.Success" Size="Size.Small"
+                                                       Disabled="@dashIsPassive"
+                                                       OnClick="@(() => TriggerProbeFromDashboardAsync(probe))" />
+                                    </MudTooltip>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
         </MudTabPanel>
 
         @* ───────────────────────── Analysis ───────────────────────── *@
@@ -459,11 +496,11 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var probe in _effectiveProbes)
+                        @foreach (var probe in AssignmentOrdering.ByNameEnabledFirst(_effectiveProbes, p => ProbeRowHelper.ResolveDisplayName(ResolveProbeAssignmentName(p.AssignmentId), p.ProbePluginId), p => p.Enabled))
                         {
-                            <tr>
+                            <tr class="@(probe.Enabled ? null : "assignment-row--disabled")">
                                 <td>
-                                    @(ResolveProbeAssignmentName(probe.AssignmentId) ?? ProbeNameFromPluginId(probe.ProbePluginId))
+                                    @(AssignmentOrdering.WithDisabledSuffix(ResolveProbeAssignmentName(probe.AssignmentId) ?? ProbeNameFromPluginId(probe.ProbePluginId), probe.Enabled))
                                     @if (!string.IsNullOrWhiteSpace(probe.TargetAddressOverride))
                                     {
                                         <MudTooltip Text="@($"Target address override: {probe.TargetAddressOverride}")">
@@ -535,7 +572,7 @@ else
                                     <MudTooltip Text="@(isPassive ? "Passive probes cannot be triggered manually" : "Trigger probe now")">
                                         <MudIconButton Icon="@Icons.Material.Filled.PlayArrow" Color="Color.Success" Size="Size.Small"
                                                        Disabled="@isPassive"
-                                                       OnClick="@(() => TriggerProbeAsync(probe.ProbePluginId))" />
+                                                       OnClick="@(() => TriggerProbeAsync(probe))" />
                                     </MudTooltip>
                                 </td>
                             </tr>
@@ -570,10 +607,10 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var checker in _effectiveCheckers)
+                        @foreach (var checker in AssignmentOrdering.ByNameEnabledFirst(_effectiveCheckers, c => ResolveCheckerAssignmentName(c.AssignmentId) ?? c.CheckerPluginId, c => c.Enabled))
                         {
-                            <tr>
-                                <td>@(ResolveCheckerAssignmentName(checker.AssignmentId) ?? checker.CheckerPluginId)</td>
+                            <tr class="@(checker.Enabled ? null : "assignment-row--disabled")">
+                                <td>@(AssignmentOrdering.WithDisabledSuffix(ResolveCheckerAssignmentName(checker.AssignmentId) ?? checker.CheckerPluginId, checker.Enabled))</td>
                                 <td><code>@checker.CheckerPluginId</code></td>
                                 <td>
                                     <MudIcon Icon="@(checker.Enabled ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
@@ -601,6 +638,14 @@ else
                                     <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
                                 </td>
                                 <td style="white-space:nowrap;">
+                                    <MudTooltip Text="Force status">
+                                        <MudMenu Icon="@Icons.Material.Filled.Bolt" Color="Color.Warning" Size="Size.Small" Dense="true" AriaLabel="Force status">
+                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Healthy))">Healthy</MudMenuItem>
+                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Degraded))">Degraded</MudMenuItem>
+                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unhealthy))">Unhealthy</MudMenuItem>
+                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unreachable))">Unreachable</MudMenuItem>
+                                        </MudMenu>
+                                    </MudTooltip>
                                     @if (checker.SourceType == "Direct")
                                     {
                                         <MudTooltip Text="Edit assignment">
@@ -1462,12 +1507,41 @@ else
         }
     }
 
-    private async Task TriggerProbeAsync(string probePluginId)
+    private async Task TriggerProbeAsync(EffectiveProbeAssignment probe)
     {
         try
         {
-            await Api.TriggerProbeAsync(Id, probePluginId);
-            Snackbar.Add($"Probe '{probePluginId}' triggered.", Severity.Success);
+            await Api.TriggerProbeAsync(Id, probe.ProbePluginId);
+            Snackbar.Add(ProbeRowHelper.FormatTriggerToast(ResolveProbeAssignmentName(probe.AssignmentId), probe.ProbePluginId), Severity.Success);
+        }
+        catch (ApiException ax)
+        {
+            Snackbar.Add(ax.Message, Severity.Error);
+        }
+    }
+
+    private async Task TriggerProbeFromDashboardAsync(EffectiveProbeAssignment probe)
+    {
+        try
+        {
+            await Api.TriggerProbeAsync(Id, probe.ProbePluginId);
+            Snackbar.Add(ProbeRowHelper.FormatTriggerToast(ResolveProbeAssignmentName(probe.AssignmentId), probe.ProbePluginId), Severity.Success);
+            var latest = await Api.GetLatestProbeResultsPerProbeAsync(Id);
+            _lastProbeRun = latest.ToDictionary(r => r.ProbeId, r => r.Timestamp);
+            StateHasChanged();
+        }
+        catch (ApiException ax)
+        {
+            Snackbar.Add(ax.Message, Severity.Error);
+        }
+    }
+
+    private async Task ForceStatusAsync(string checkerPluginId, MonitoringStatus status)
+    {
+        try
+        {
+            await Api.ForceStatusAsync(Id, checkerPluginId, status);
+            Snackbar.Add($"Forced '{checkerPluginId}' to {status}.", Severity.Success);
         }
         catch (ApiException ax)
         {

@@ -5,4 +5,5 @@ public sealed record CheckerEvaluationContext(
     string? TriggeringProbeId,
     ProbeResult? TriggeringResult,
     IMetricHistoryAccessor History,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken,
+    string? LogLine = null);

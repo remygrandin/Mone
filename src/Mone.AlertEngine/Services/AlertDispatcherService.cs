@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Mone.Contracts.Plugins;
 using Mone.Infrastructure.Data;
 using Mone.Infrastructure.Data.Entities;
+using Mone.Infrastructure.Maintenance;
 using Mone.Messaging;
 using Mone.Messaging.Messages;
 using Mone.PluginEngine;
@@ -62,6 +63,23 @@ public class AlertDispatcherService(
         logger.LogInformation(
             "Received status change for checker {CheckerId}, target {TargetId}: {PreviousStatus} -> {CurrentStatus}",
             checkerId, change.TargetId, change.PreviousStatus, change.CurrentStatus);
+
+        if (Guid.TryParse(change.TargetId, out var hostId))
+        {
+            using var maintenanceScope = scopeFactory.CreateScope();
+            var maintenanceDb = maintenanceScope.ServiceProvider.GetRequiredService<MoneDbContext>();
+            var windows = await maintenanceDb.MaintenanceWindows
+                .Where(w => w.HostId == hostId && w.Enabled)
+                .ToListAsync(ct);
+
+            if (MaintenanceWindowEvaluator.IsInMaintenance(windows, DateTimeOffset.UtcNow))
+            {
+                logger.LogInformation(
+                    "Status change for checker {CheckerId}, target {TargetId} suppressed by maintenance window, skipping dispatch",
+                    checkerId, change.TargetId);
+                return;
+            }
+        }
 
         var notifications = pluginEngine.GetPluginsByKind(PluginKind.Notification);
 

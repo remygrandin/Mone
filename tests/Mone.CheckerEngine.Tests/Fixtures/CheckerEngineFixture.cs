@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Mone.CheckerEngine.Services;
+using Mone.Contracts.Models;
 using Mone.Contracts.Plugins;
 using Mone.Infrastructure.Data;
 using Mone.Messaging;
@@ -58,6 +59,8 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
             new StreamConfig(MoneStreams.ProbeResults.StreamName, [MoneStreams.ProbeResults.SubjectPrefix]));
         await js.CreateOrUpdateStreamAsync(
             new StreamConfig(MoneStreams.StatusChanges.StreamName, [MoneStreams.StatusChanges.SubjectPrefix]));
+        await js.CreateOrUpdateStreamAsync(
+            new StreamConfig(MoneStreams.ProbeLogs.StreamName, [MoneStreams.ProbeLogs.SubjectPrefix]));
 
         await using var dbContext = CreateDbContext();
         await dbContext.Database.MigrateAsync();
@@ -102,6 +105,29 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
             PluginTypeName = plugin.GetType().FullName!,
             Kind = PluginKind.Checker,
             InvocationMode = plugin.InvocationMode,
+            Interval = plugin.Interval,
+            AssemblyPath = plugin.GetType().Assembly.Location
+        };
+        engine.Registry.TryRegister(plugin.Name, new PluginRegistration(plugin, metadata));
+
+        return engine;
+    }
+
+    public Mone.PluginEngine.PluginEngine CreatePluginEngineWithLogChecker()
+    {
+        var logger = NullLogger<Mone.PluginEngine.PluginEngine>.Instance;
+        var engine = new Mone.PluginEngine.PluginEngine(logger, enableHotReload: false);
+
+        var plugin = new TestCheckerPlugin.LogRegexTestCheckerPlugin();
+        var metadata = new PluginMetadata
+        {
+            PluginId = plugin.Name,
+            Name = plugin.Name,
+            Version = plugin.Version,
+            Description = plugin.Description,
+            PluginTypeName = plugin.GetType().FullName!,
+            Kind = PluginKind.Checker,
+            InvocationMode = CheckerInvocationMode.OnLogEvent,
             Interval = plugin.Interval,
             AssemblyPath = plugin.GetType().Assembly.Location
         };

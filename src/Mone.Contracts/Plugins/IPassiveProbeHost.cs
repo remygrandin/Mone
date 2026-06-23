@@ -21,6 +21,14 @@ public interface IPassiveProbeHost
     /// messaging envelope and publishes through the spooling sink.
     /// </summary>
     Task PublishResultAsync(string targetId, ProbeResult result, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Emit a neutral log event for a target the plugin resolved from an inbound event. The host
+    /// forwards the raw line verbatim on probes.logs.{targetId} as a best-effort publish (log events
+    /// are not spooled). Used by dumb log-emitting probes that forward datagrams without computing a
+    /// metric result.
+    /// </summary>
+    Task PublishLogEventAsync(string targetId, string line, IReadOnlyDictionary<string, object>? metadata, CancellationToken cancellationToken);
 }
 
 /// <summary>

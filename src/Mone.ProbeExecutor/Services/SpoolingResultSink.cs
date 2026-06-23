@@ -29,4 +29,18 @@ public sealed class SpoolingResultSink(
             await spoolStore.EnqueueResultAsync(subject, JsonSerializer.Serialize(message), ct);
         }
     }
+
+    public async Task PublishLogEventAsync(string subject, ProbeLogEventMessage message, CancellationToken ct)
+    {
+        try
+        {
+            var ack = await jetStream.PublishAsync(subject, message, cancellationToken: ct);
+            ack.EnsureSuccess();
+            logger.LogDebug("Published probe log event to NATS subject {Subject}", subject);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Publish of log event to {Subject} failed; dropping (logs are not spooled)", subject);
+        }
+    }
 }

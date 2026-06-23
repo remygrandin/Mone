@@ -506,3 +506,5 @@
 }
 
 .fc-cmeta .fc-tagn { color: var(--mud-palette-text-secondary); }
+
+.assignment-row--disabled { opacity: .55; }

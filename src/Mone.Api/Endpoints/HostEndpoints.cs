@@ -144,6 +144,41 @@ public static class HostEndpoints
         .WithSummary("Delete a host by id. Returns 404 if the host does not exist.")
         .Produces(StatusCodes.Status204NoContent)
         .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{id:guid}/error-policy", async (Guid id, MoneDbContext db) =>
+        {
+            var host = await db.Hosts.FirstOrDefaultAsync(h => h.Id == id);
+            return host is null
+                ? Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound)
+                : Results.Ok(new HostErrorPolicyResponse(host.Id, host.ErrorPolicyThreshold));
+        })
+        .WithName("GetHostErrorPolicy")
+        .WithSummary("Get a host's N-of-M error-policy threshold. Returns 404 if the host does not exist.")
+        .Produces<HostErrorPolicyResponse>()
+        .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPut("/{id:guid}/error-policy", async (Guid id, UpdateHostErrorPolicyRequest request, MoneDbContext db) =>
+        {
+            var host = await db.Hosts.FirstOrDefaultAsync(h => h.Id == id);
+            if (host is null) return Results.Problem("Host not found.", statusCode: StatusCodes.Status404NotFound);
+
+            if (request.ErrorThreshold < 1)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["ErrorThreshold"] = new[] { "ErrorThreshold must be at least 1." }
+                });
+
+            host.ErrorPolicyThreshold = request.ErrorThreshold;
+            host.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+
+            return Results.Ok(new HostErrorPolicyResponse(host.Id, host.ErrorPolicyThreshold));
+        })
+        .WithName("UpdateHostErrorPolicy")
+        .WithSummary("Set a host's N-of-M error-policy threshold (N). Returns 404 if the host does not exist, 400 if ErrorThreshold is below 1.")
+        .Produces<HostErrorPolicyResponse>()
+        .ProducesValidationProblem()
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 
     private static HostResponse ToResponse(HostEntity host) => new(

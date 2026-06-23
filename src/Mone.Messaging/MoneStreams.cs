@@ -8,6 +8,12 @@ public static class MoneStreams
         public const string SubjectPrefix = "probes.results.>";
     }
 
+    public static class ProbeLogs
+    {
+        public const string StreamName = "PROBE_LOGS";
+        public const string SubjectPrefix = "probes.logs.>";
+    }
+
     public static class StatusChanges
     {
         public const string StreamName = "STATUS_CHANGES";

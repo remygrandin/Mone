@@ -15,6 +15,9 @@ public sealed class NatsStreamSetup(INatsConnection connection, ILogger<NatsStre
         await CreateOrUpdateStream(js, MoneStreams.ProbeResults.StreamName,
             [MoneStreams.ProbeResults.SubjectPrefix], cancellationToken);
 
+        await CreateOrUpdateStream(js, MoneStreams.ProbeLogs.StreamName,
+            [MoneStreams.ProbeLogs.SubjectPrefix], cancellationToken);
+
         await CreateOrUpdateStream(js, MoneStreams.StatusChanges.StreamName,
             [MoneStreams.StatusChanges.SubjectPrefix], cancellationToken);
 

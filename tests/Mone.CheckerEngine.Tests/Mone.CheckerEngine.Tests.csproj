@@ -29,6 +29,8 @@
     <ProjectReference Include="..\..\src\Mone.Messaging\Mone.Messaging.csproj" />
     <ProjectReference Include="..\..\src\Mone.PluginEngine\Mone.PluginEngine.csproj" />
     <ProjectReference Include="..\..\src\Mone.CheckerEngine\Mone.CheckerEngine.csproj" />
+    <ProjectReference Include="..\..\src\Mone.ProbeExecutor\Mone.ProbeExecutor.csproj" />
+    <ProjectReference Include="..\..\..\Mone-Plugins\probes\Mone.Plugins.Probes.Syslog\Mone.Plugins.Probes.Syslog.csproj" />
     <ProjectReference Include="..\TestPlugins\TestCheckerPlugin\TestCheckerPlugin.csproj" />
   </ItemGroup>
 

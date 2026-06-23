@@ -91,9 +91,9 @@
             var status = MonitoringStatus.Unknown;
             try
             {
-                var latestStatuses = await Api.GetLatestStatusAsync(host.Id);
-                if (latestStatuses.Length > 0)
-                    status = latestStatuses.Max(s => s.CurrentStatus);
+                var rollup = await Api.GetHostRollupAsync(host.Id);
+                if (rollup is not null)
+                    status = rollup.Status;
             }
             catch
             {

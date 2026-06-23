@@ -17,11 +17,30 @@ public sealed class CheckerDispatcher(
     StatusTracker statusTracker,
     ILogger<CheckerDispatcher> logger)
 {
-    public async Task DispatchAsync(
+    public Task DispatchAsync(
         EffectiveCheckerAssignment assignment,
         string targetId,
         string? triggeringProbeId,
         ProbeResult? triggeringResult,
+        MoneDbContext db,
+        CancellationToken ct)
+        => DispatchCoreAsync(assignment, targetId, triggeringProbeId, triggeringResult, logLine: null, db, ct);
+
+    public Task DispatchLogEventAsync(
+        EffectiveCheckerAssignment assignment,
+        string targetId,
+        string? triggeringProbeId,
+        string logLine,
+        MoneDbContext db,
+        CancellationToken ct)
+        => DispatchCoreAsync(assignment, targetId, triggeringProbeId, triggeringResult: null, logLine, db, ct);
+
+    private async Task DispatchCoreAsync(
+        EffectiveCheckerAssignment assignment,
+        string targetId,
+        string? triggeringProbeId,
+        ProbeResult? triggeringResult,
+        string? logLine,
         MoneDbContext db,
         CancellationToken ct)
     {
@@ -50,7 +69,7 @@ public sealed class CheckerDispatcher(
 
         var pluginContext = new PluginContext(checkerId, config, ct);
         var history = new MetricHistoryAccessor(db);
-        var evalContext = new CheckerEvaluationContext(targetId, triggeringProbeId, triggeringResult, history, ct);
+        var evalContext = new CheckerEvaluationContext(targetId, triggeringProbeId, triggeringResult, history, ct, logLine);
 
         StatusChange? statusChange;
         try
@@ -64,6 +83,16 @@ public sealed class CheckerDispatcher(
             return;
         }
 
+        await HandleStatusChangeAsync(checkerId, targetId, statusChange, db, ct);
+    }
+
+    private async Task HandleStatusChangeAsync(
+        string checkerId,
+        string targetId,
+        StatusChange? statusChange,
+        MoneDbContext db,
+        CancellationToken ct)
+    {
         if (statusChange is null)
         {
             logger.LogDebug(

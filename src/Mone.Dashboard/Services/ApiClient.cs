@@ -43,6 +43,9 @@ public sealed class ApiClient
     public async Task<StatusResponse[]> GetLatestStatusAsync(Guid hostId) =>
         await GetAsync<StatusResponse[]>($"api/hosts/{hostId}/status/latest") ?? [];
 
+    public async Task<HostStatusRollupResponse?> GetHostRollupAsync(Guid hostId) =>
+        await GetAsync<HostStatusRollupResponse>($"api/hosts/{hostId}/status/rollup");
+
     public async Task<StatusResponse[]> GetStatusHistoryAsync(Guid hostId, DateTimeOffset? from = null, DateTimeOffset? to = null)
     {
         var url = $"api/hosts/{hostId}/status/history";
@@ -275,6 +278,9 @@ public sealed class ApiClient
 
     public async Task TriggerProbeAsync(Guid hostId, string probePluginId) =>
         await PostAsync<TriggerProbeRequest, object?>($"api/hosts/{hostId}/trigger-probe", new TriggerProbeRequest(probePluginId));
+
+    public async Task ForceStatusAsync(Guid hostId, string checkerPluginId, MonitoringStatus status) =>
+        await PostAsync<ForceStatusRequest, object?>($"api/hosts/{hostId}/status/force", new ForceStatusRequest(checkerPluginId, status));
 
     public async Task<PluginRepositoryResponse[]> GetPluginRepositoriesAsync() =>
         await GetAsync<PluginRepositoryResponse[]>("api/plugin-repos") ?? [];

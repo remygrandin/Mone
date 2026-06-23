@@ -15,6 +15,10 @@ namespace Mone.Api.Services;
 /// directly — they publish to NATS, and this hosted service consumes <c>probes.results.&gt;</c> and
 /// persists each result. Forwarded spool items can re-deliver, so the insert is idempotent on the
 /// composite PK (Timestamp, TargetId, ProbeId): duplicates are ignored.
+///
+/// This service deliberately subscribes ONLY to <c>probes.results.&gt;</c> and intentionally never
+/// consumes <c>probes.logs.&gt;</c>. Log events flow through a separate channel (PROBE_LOGS stream) and
+/// are dispatched to opted-in checkers; they are never auto-persisted as metric rows (R035).
 /// </summary>
 public sealed class ProbeResultPersistenceService(
     INatsJSContext jetStream,

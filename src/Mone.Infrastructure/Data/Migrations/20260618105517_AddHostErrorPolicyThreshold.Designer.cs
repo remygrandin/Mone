@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Mone.Infrastructure.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Mone.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(MoneDbContext))]
-    partial class MoneDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618105517_AddHostErrorPolicyThreshold")]
+    partial class AddHostErrorPolicyThreshold
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -382,49 +385,6 @@ namespace Mone.Infrastructure.Data.Migrations
                     b.HasIndex("TagId");
 
                     b.ToTable("host_tags", (string)null);
-                });
-
-            modelBuilder.Entity("Mone.Infrastructure.Data.Entities.MaintenanceWindowEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Cron")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<int>("DurationMinutes")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("HostId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<DateTimeOffset?>("StartsAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("HostId");
-
-                    b.ToTable("maintenance_windows", (string)null);
                 });
 
             modelBuilder.Entity("Mone.Infrastructure.Data.Entities.NotificationAuditEntity", b =>
@@ -1194,17 +1154,6 @@ namespace Mone.Infrastructure.Data.Migrations
                     b.Navigation("Tag");
                 });
 
-            modelBuilder.Entity("Mone.Infrastructure.Data.Entities.MaintenanceWindowEntity", b =>
-                {
-                    b.HasOne("Mone.Infrastructure.Data.Entities.HostEntity", "Host")
-                        .WithMany("MaintenanceWindows")
-                        .HasForeignKey("HostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Host");
-                });
-
             modelBuilder.Entity("Mone.Infrastructure.Data.Entities.PluginManifestEntity", b =>
                 {
                     b.HasOne("Mone.Infrastructure.Data.Entities.PluginRepositoryEntity", "Repository")
@@ -1317,8 +1266,6 @@ namespace Mone.Infrastructure.Data.Migrations
                     b.Navigation("GroupMemberships");
 
                     b.Navigation("HostTags");
-
-                    b.Navigation("MaintenanceWindows");
 
                     b.Navigation("ProbeAssignments");
                 });

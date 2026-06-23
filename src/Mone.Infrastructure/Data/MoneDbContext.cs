@@ -28,6 +28,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
     public DbSet<RoleEntity> MoneRoles => Set<RoleEntity>();
     public DbSet<RolePermissionEntity> RolePermissions => Set<RolePermissionEntity>();
     public DbSet<UserRoleAssignmentEntity> UserRoleAssignments => Set<UserRoleAssignmentEntity>();
+    public DbSet<MaintenanceWindowEntity> MaintenanceWindows => Set<MaintenanceWindowEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +40,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).IsRequired().HasMaxLength(256);
             e.Property(x => x.Address).IsRequired().HasMaxLength(512);
+            e.Property(x => x.ErrorPolicyThreshold).HasDefaultValue(1);
             e.HasIndex(x => x.Name).IsUnique();
         });
 
@@ -293,6 +295,19 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
                 .HasForeignKey(x => x.RoleId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.UserId, x.RoleId, x.ScopeType, x.ScopeId }).IsUnique();
+        });
+
+        modelBuilder.Entity<MaintenanceWindowEntity>(e =>
+        {
+            e.ToTable("maintenance_windows");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Cron).HasMaxLength(64);
+            e.HasOne(x => x.Host)
+                .WithMany(h => h.MaintenanceWindows)
+                .HasForeignKey(x => x.HostId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.HostId);
         });
     }
 }

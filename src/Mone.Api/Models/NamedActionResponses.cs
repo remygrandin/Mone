@@ -19,3 +19,5 @@ public sealed record ExecutorNodeRegistrationResponse(Guid Id);
 public sealed record RepositorySyncAllResponse(int Synced);
 
 public sealed record ProbeTriggerResponse(string Status, string ProbePluginId, Guid HostId);
+
+public sealed record ForceStatusResponse(string Status, string CheckerPluginId, Guid HostId);

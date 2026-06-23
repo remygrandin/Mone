@@ -27,4 +27,11 @@ public sealed class PassiveProbeHost(
         var message = new ProbeResultMessage(targetId, pluginId, probeType, result);
         await resultSink.PublishAsync(subject, message, cancellationToken);
     }
+
+    public async Task PublishLogEventAsync(string targetId, string line, IReadOnlyDictionary<string, object>? metadata, CancellationToken cancellationToken)
+    {
+        var subject = $"probes.logs.{targetId}";
+        var message = new ProbeLogEventMessage(targetId, pluginId, probeType, line, DateTimeOffset.UtcNow, metadata);
+        await resultSink.PublishLogEventAsync(subject, message, cancellationToken);
+    }
 }
