@@ -115,6 +115,18 @@ public sealed class ApiClient
     public async Task DeleteNotificationConfigAsync(Guid id) =>
         await DeleteAsync("api/notifications/configs/" + id);
 
+    public async Task<CredentialsResponse[]> GetCredentialsAsync() =>
+        await GetAsync<CredentialsResponse[]>("api/credentials") ?? [];
+
+    public async Task<CredentialsResponse?> CreateCredentialsAsync(CreateCredentialsRequest request) =>
+        await PostAsync<CreateCredentialsRequest, CredentialsResponse>("api/credentials", request);
+
+    public async Task UpdateCredentialsAsync(Guid id, UpdateCredentialsRequest request) =>
+        await PutAsync("api/credentials/" + id, request);
+
+    public async Task DeleteCredentialsAsync(Guid id) =>
+        await DeleteAsync("api/credentials/" + id);
+
     public async Task<ExecutorNodeResponse[]> GetExecutorNodesAsync() =>
         await GetAsync<ExecutorNodeResponse[]>("api/executor-nodes") ?? [];
 
