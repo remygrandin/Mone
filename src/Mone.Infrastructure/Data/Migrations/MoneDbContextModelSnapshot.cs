@@ -533,6 +533,39 @@ namespace Mone.Infrastructure.Data.Migrations
                     b.ToTable("plugin_global_configs", (string)null);
                 });
 
+            modelBuilder.Entity("Mone.Infrastructure.Data.Entities.CredentialsEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("credentials");
+                });
+
             modelBuilder.Entity("Mone.Infrastructure.Data.Entities.PluginManifestEntity", b =>
                 {
                     b.Property<Guid>("Id")

@@ -222,6 +222,7 @@ app.MapDashboardEndpoints();
 app.MapPluginRepositoryEndpoints();
 app.MapLoadedPluginEndpoints();
 app.MapPluginGlobalConfigEndpoints();
+app.MapCredentialsEndpoints();
 app.MapHostGroupEndpoints();
 app.MapGroupProbeAssignmentEndpoints();
 app.MapGroupCheckerAssignmentEndpoints();

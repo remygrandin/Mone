@@ -19,6 +19,7 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
     public DbSet<PluginRepositoryEntity> PluginRepositories => Set<PluginRepositoryEntity>();
     public DbSet<PluginManifestEntity> PluginManifests => Set<PluginManifestEntity>();
     public DbSet<PluginGlobalConfigEntity> PluginGlobalConfigs => Set<PluginGlobalConfigEntity>();
+    public DbSet<CredentialsEntity> Credentials => Set<CredentialsEntity>();
     public DbSet<GroupEntity> HostGroups => Set<GroupEntity>();
     public DbSet<GroupMembershipEntity> HostGroupMemberships => Set<GroupMembershipEntity>();
     public DbSet<ProbeAssignmentOverrideEntity> ProbeAssignmentOverrides => Set<ProbeAssignmentOverrideEntity>();
@@ -212,6 +213,18 @@ public class MoneDbContext(DbContextOptions<MoneDbContext> options) : IdentityDb
             e.HasKey(x => x.Id);
             e.Property(x => x.PluginId).IsRequired().HasMaxLength(256);
             e.HasIndex(x => x.PluginId).IsUnique();
+        });
+
+        modelBuilder.Entity<CredentialsEntity>(e =>
+        {
+            e.ToTable("credentials");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(256);
+            e.Property(x => x.Username).IsRequired().HasMaxLength(512);
+            e.Property(x => x.Password).IsRequired();
+            e.Property(x => x.CreatedAt).IsRequired();
+            e.Property(x => x.UpdatedAt).IsRequired();
+            e.HasIndex(x => x.Name).IsUnique();
         });
 
         modelBuilder.Entity<GroupEntity>(e =>

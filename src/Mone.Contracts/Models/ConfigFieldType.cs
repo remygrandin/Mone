@@ -7,5 +7,6 @@ public enum ConfigFieldType
     Double,
     Boolean,
     Choice,
-    Secret
+    Secret,
+    Credentials
 }
