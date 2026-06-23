@@ -49,7 +49,7 @@ public static class CredentialsEndpoints
     {
         var credentials = await db.Credentials
             .OrderBy(c => c.Name)
-            .Select(c => new CredentialsResponse(c.Id, c.Name, c.Username, c.Password, c.CreatedAt, c.UpdatedAt))
+            .Select(c => new CredentialsResponse(c.Id, c.Name, c.Username, ObfuscatePassword(c.Password), c.CreatedAt, c.UpdatedAt))
             .ToListAsync();
 
         return Results.Ok(credentials);
@@ -126,5 +126,20 @@ public static class CredentialsEndpoints
         await db.SaveChangesAsync();
 
         return Results.NoContent();
+    }
+
+    private static string ObfuscatePassword(string password)
+    {
+        if (string.IsNullOrEmpty(password) || password.Length <= 1)
+            return new string('*', Math.Max(1, password?.Length ?? 0));
+
+        var quarter = password.Length / 4;
+        if (quarter == 0) quarter = 1;
+
+        var first = password[..quarter];
+        var middle = new string('*', password.Length - (2 * quarter));
+        var last = password[^quarter..];
+
+        return $"{first}{middle}{last}";
     }
 }
