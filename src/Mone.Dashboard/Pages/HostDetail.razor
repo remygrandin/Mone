@@ -634,36 +634,36 @@ else
                                         <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Edit">Overridden</MudChip>
                                     }
                                 </td>
-                                <td>
-                                    <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
-                                </td>
                                 <td style="white-space:nowrap;">
-                                    <MudTooltip Text="Force status">
-                                        <MudMenu Icon="@Icons.Material.Filled.Bolt" Color="Color.Warning" Size="Size.Small" Dense="true" AriaLabel="Force status">
-                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Healthy))">Healthy</MudMenuItem>
-                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Degraded))">Degraded</MudMenuItem>
-                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unhealthy))">Unhealthy</MudMenuItem>
-                                            <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unreachable))">Unreachable</MudMenuItem>
-                                        </MudMenu>
-                                    </MudTooltip>
-                                    @if (checker.SourceType == "Direct")
-                                    {
-                                        <MudTooltip Text="Edit assignment">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
-                                                           OnClick="@(() => OpenEditCheckerDialog(checker))" />
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
+                                        <MudTooltip Text="Force status">
+                                            <MudMenu Icon="@Icons.Material.Filled.Bolt" Color="Color.Warning" Size="Size.Small" Dense="true" AriaLabel="Force status">
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Healthy))">Healthy</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Degraded))">Degraded</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unhealthy))">Unhealthy</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unreachable))">Unreachable</MudMenuItem>
+                                            </MudMenu>
                                         </MudTooltip>
-                                        <MudTooltip Text="Delete assignment">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                                           OnClick="@(() => DeleteCheckerAsync(checker.AssignmentId))" />
-                                        </MudTooltip>
-                                    }
-                                    else
-                                    {
-                                        <MudTooltip Text="Edit override">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
-                                                           OnClick="@(() => OpenCheckerOverrideDialog(checker))" />
-                                        </MudTooltip>
-                                    }
+                                        @if (checker.SourceType == "Direct")
+                                        {
+                                            <MudTooltip Text="Edit assignment">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                               OnClick="@(() => OpenEditCheckerDialog(checker))" />
+                                            </MudTooltip>
+                                            <MudTooltip Text="Delete assignment">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                               OnClick="@(() => DeleteCheckerAsync(checker.AssignmentId))" />
+                                            </MudTooltip>
+                                        }
+                                        else
+                                        {
+                                            <MudTooltip Text="Edit override">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                               OnClick="@(() => OpenCheckerOverrideDialog(checker))" />
+                                            </MudTooltip>
+                                        }
+                                    </div>
                                 </td>
                             </tr>
                         }
