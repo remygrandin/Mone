@@ -21,7 +21,7 @@ public class ForceStatusEndpointTests
 
     public ForceStatusEndpointTests(ApiFixture fixture) => _fixture = fixture;
 
-    private async Task<(HttpClient Client, Guid HostId)> SetupHostWithCheckerAsync(string suffix)
+    private async Task<(HttpClient Client, Guid HostId, Guid AssignmentId)> SetupHostWithCheckerAsync(string suffix)
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
             $"force_{suffix}_{Guid.NewGuid():N}@test.com", "ValidPass1!");
@@ -34,14 +34,16 @@ public class ForceStatusEndpointTests
         var checkerResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/checkers",
             new CreateCheckerAssignmentRequest("threshold", "threshold"));
         Assert.Equal(HttpStatusCode.Created, checkerResp.StatusCode);
+        var checkerAssignment = await checkerResp.Content.ReadFromJsonAsync<CheckerAssignmentResponse>();
+        var assignmentId = checkerAssignment!.Id;
 
-        return (client, hostId);
+        return (client, hostId, assignmentId);
     }
 
     [Fact]
     public async Task ForceStatus_PublishesStatusChange_AndRollupReflectsIt()
     {
-        var (client, hostId) = await SetupHostWithCheckerAsync("publish");
+        var (client, hostId, assignmentId) = await SetupHostWithCheckerAsync("publish");
         using var _ = client;
 
         // Independent consumer to capture the published message, mirroring AlertDispatcherService.
@@ -57,7 +59,7 @@ public class ForceStatusEndpointTests
             });
 
         var forceResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/status/force",
-            new ForceStatusRequest("threshold", MonitoringStatus.Unhealthy));
+            new ForceStatusRequest(assignmentId, MonitoringStatus.Unhealthy));
         Assert.Equal(HttpStatusCode.Accepted, forceResp.StatusCode);
 
         // Read one message off the stream with a bounded wait.
@@ -80,9 +82,10 @@ public class ForceStatusEndpointTests
         // StatusHistory row persisted for the forced transition.
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MoneDbContext>();
+        var assignmentIdStr = assignmentId.ToString();
         var persisted = db.StatusHistory.Any(s =>
             s.TargetId == hostId &&
-            s.CheckerId == "threshold" &&
+            s.CheckerId == assignmentIdStr &&
             s.CurrentStatus == MonitoringStatus.Unhealthy);
         Assert.True(persisted, "Expected a StatusHistory row for the forced Unhealthy transition.");
     }
@@ -90,11 +93,11 @@ public class ForceStatusEndpointTests
     [Fact]
     public async Task ForceStatus_WithInvalidStatus_Returns400()
     {
-        var (client, hostId) = await SetupHostWithCheckerAsync("invalid");
+        var (client, hostId, _) = await SetupHostWithCheckerAsync("invalid");
         using var _ = client;
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{hostId}/status/force",
-            new { checkerPluginId = "threshold", status = 999 });
+            new { assignmentId = Guid.NewGuid(), status = 999 });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -111,7 +114,7 @@ public class ForceStatusEndpointTests
         var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{host!.Id}/status/force",
-            new ForceStatusRequest("does-not-exist", MonitoringStatus.Unhealthy));
+            new ForceStatusRequest(Guid.NewGuid(), MonitoringStatus.Unhealthy));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

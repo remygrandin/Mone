@@ -148,7 +148,7 @@ else
                                     <tr>
                                         <td>@CheckerDisplayName(checker.CheckerPluginId)</td>
                                         <td>
-                                            <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
+                                            <StatusIndicator Status="@GetCheckerStatus(checker.AssignmentId)" />
                                         </td>
                                     </tr>
                                 }
@@ -636,13 +636,13 @@ else
                                 </td>
                                 <td style="white-space:nowrap;">
                                     <div style="display:flex;align-items:center;gap:8px;">
-                                        <StatusIndicator Status="@GetCheckerStatus(checker.CheckerPluginId)" />
+                                        <StatusIndicator Status="@GetCheckerStatus(checker.AssignmentId)" />
                                         <MudTooltip Text="Force status">
                                             <MudMenu Icon="@Icons.Material.Filled.Bolt" Color="Color.Warning" Size="Size.Small" Dense="true" AriaLabel="Force status">
-                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Healthy))">Healthy</MudMenuItem>
-                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Degraded))">Degraded</MudMenuItem>
-                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unhealthy))">Unhealthy</MudMenuItem>
-                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.CheckerPluginId, MonitoringStatus.Unreachable))">Unreachable</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.AssignmentId, checker.CheckerPluginId, MonitoringStatus.Healthy))">Healthy</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.AssignmentId, checker.CheckerPluginId, MonitoringStatus.Degraded))">Degraded</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.AssignmentId, checker.CheckerPluginId, MonitoringStatus.Unhealthy))">Unhealthy</MudMenuItem>
+                                                <MudMenuItem OnClick="@(() => ForceStatusAsync(checker.AssignmentId, checker.CheckerPluginId, MonitoringStatus.Unreachable))">Unreachable</MudMenuItem>
                                             </MudMenu>
                                         </MudTooltip>
                                         @if (checker.SourceType == "Direct")
@@ -945,8 +945,8 @@ else
         return unit is null ? numeric : $"{numeric} {unit}";
     }
 
-    private MonitoringStatus GetCheckerStatus(string checkerPluginId) =>
-        _checkerStatusLookup.GetValueOrDefault(checkerPluginId, MonitoringStatus.Unknown);
+    private MonitoringStatus GetCheckerStatus(Guid assignmentId) =>
+        _checkerStatusLookup.GetValueOrDefault(assignmentId.ToString(), MonitoringStatus.Unknown);
 
     private async Task LoadEffectiveAssignmentsAsync()
     {
@@ -1276,7 +1276,7 @@ else
         foreach (var id in ids)
         {
             var transitions = _statusHistory.Where(s => s.CheckerId == id).ToList();
-            var fallback = GetCheckerStatus(id);
+            var fallback = Guid.TryParse(id, out var assignmentId) ? GetCheckerStatus(assignmentId) : MonitoringStatus.Unknown;
             result.Add((id, BuildSpans(transitions, start, end, fallback)));
         }
         return result;
@@ -1536,21 +1536,21 @@ else
         }
     }
 
-    private async Task ForceStatusAsync(string checkerPluginId, MonitoringStatus status)
+    private async Task ForceStatusAsync(Guid assignmentId, string checkerPluginId, MonitoringStatus status)
     {
         try
         {
-            await Api.ForceStatusAsync(Id, checkerPluginId, status);
+            await Api.ForceStatusAsync(Id, assignmentId, status);
             Snackbar.Add($"Forced '{checkerPluginId}' to {status}.", Severity.Success);
 
             // Reload status history and update only the affected checker's status indicator.
             var statusHistory = await Api.GetStatusHistoryAsync(Id);
             var latestForChecker = statusHistory
-                .Where(s => s.CheckerId == checkerPluginId)
+                .Where(s => s.CheckerId == assignmentId.ToString())
                 .OrderByDescending(s => s.Timestamp)
                 .FirstOrDefault();
             if (latestForChecker is not null)
-                _checkerStatusLookup[checkerPluginId] = latestForChecker.CurrentStatus;
+                _checkerStatusLookup[assignmentId.ToString()] = latestForChecker.CurrentStatus;
             StateHasChanged();
         }
         catch (ApiException ax)

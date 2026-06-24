@@ -130,14 +130,16 @@ public static class StatusEndpoints
                 });
 
             var checkers = await resolver.GetEffectiveCheckerAssignmentsAsync(hostId);
-            if (!checkers.Any(c => c.CheckerPluginId == request.CheckerPluginId))
+            var checker = checkers.FirstOrDefault(c => c.AssignmentId == request.AssignmentId);
+            if (checker is null)
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["checkerPluginId"] = new[] { $"No active assignment for '{request.CheckerPluginId}' on this host." }
+                    ["assignmentId"] = new[] { $"No active assignment with ID '{request.AssignmentId}' on this host." }
                 });
 
+            var assignmentIdStr = request.AssignmentId.ToString();
             var previousStatus = await db.StatusHistory
-                .Where(s => s.TargetId == hostId && s.CheckerId == request.CheckerPluginId)
+                .Where(s => s.TargetId == hostId && s.CheckerId == assignmentIdStr)
                 .OrderByDescending(s => s.Timestamp)
                 .Select(s => (MonitoringStatus?)s.CurrentStatus)
                 .FirstOrDefaultAsync() ?? MonitoringStatus.Unknown;
@@ -153,13 +155,13 @@ public static class StatusEndpoints
             try
             {
                 await jetStream.PublishAsync(
-                    $"status.changes.{request.CheckerPluginId}.{hostId}",
-                    new StatusChangeMessage(request.CheckerPluginId, change));
+                    $"status.changes.{checker.CheckerPluginId}.{hostId}",
+                    new StatusChangeMessage(checker.CheckerPluginId, change));
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to publish forced status change to NATS for {CheckerPluginId}/{HostId}",
-                    request.CheckerPluginId, hostId);
+                logger.LogError(ex, "Failed to publish forced status change to NATS for {AssignmentId}/{HostId}",
+                    request.AssignmentId, hostId);
             }
 
             try
@@ -168,7 +170,7 @@ public static class StatusEndpoints
                 {
                     Timestamp = now,
                     TargetId = hostId,
-                    CheckerId = request.CheckerPluginId,
+                    CheckerId = assignmentIdStr,
                     PreviousStatus = previousStatus,
                     CurrentStatus = request.Status
                 });
@@ -176,14 +178,14 @@ public static class StatusEndpoints
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to persist forced status change for {CheckerPluginId}/{HostId}",
-                    request.CheckerPluginId, hostId);
+                logger.LogError(ex, "Failed to persist forced status change for {AssignmentId}/{HostId}",
+                    request.AssignmentId, hostId);
             }
 
-            logger.LogInformation("Force-status injected for {CheckerPluginId} on host {HostId}: {Status}",
-                request.CheckerPluginId, hostId, request.Status);
+            logger.LogInformation("Force-status injected for {AssignmentId} on host {HostId}: {Status}",
+                request.AssignmentId, hostId, request.Status);
 
-            return Results.Accepted(value: new ForceStatusResponse("forced", request.CheckerPluginId, hostId));
+            return Results.Accepted(value: new ForceStatusResponse("forced", checker.CheckerPluginId, hostId));
         })
         .WithName("ForceStatus")
         .WithSummary("Force a one-shot status for a checker on a host: publishes a real StatusChange and persists a StatusHistory row. 202 on publish, 404 if host missing, 400 if status invalid or checker not assigned.")

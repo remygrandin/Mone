@@ -291,8 +291,8 @@ public sealed class ApiClient
     public async Task TriggerProbeAsync(Guid hostId, string probePluginId) =>
         await PostAsync<TriggerProbeRequest, object?>($"api/hosts/{hostId}/trigger-probe", new TriggerProbeRequest(probePluginId));
 
-    public async Task ForceStatusAsync(Guid hostId, string checkerPluginId, MonitoringStatus status) =>
-        await PostAsync<ForceStatusRequest, object?>($"api/hosts/{hostId}/status/force", new ForceStatusRequest(checkerPluginId, status));
+    public async Task ForceStatusAsync(Guid hostId, Guid assignmentId, MonitoringStatus status) =>
+        await PostAsync<ForceStatusRequest, object?>($"api/hosts/{hostId}/status/force", new ForceStatusRequest(assignmentId, status));
 
     public async Task<PluginRepositoryResponse[]> GetPluginRepositoriesAsync() =>
         await GetAsync<PluginRepositoryResponse[]>("api/plugin-repos") ?? [];
