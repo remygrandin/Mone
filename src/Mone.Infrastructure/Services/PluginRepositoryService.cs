@@ -377,13 +377,22 @@ public sealed class PluginRepositoryService : IPluginRepositoryService
 
     public async Task<IReadOnlyList<PluginManifestEntity>> GetAvailablePluginsAsync(CancellationToken ct = default)
     {
-        return await _db.PluginManifests
+        var manifests = await _db.PluginManifests
             .Include(m => m.Repository)
             .Where(m => m.Repository.Enabled)
-            .OrderBy(m => m.Name)
-            .ThenByDescending(m => m.Version)
             .AsNoTracking()
             .ToListAsync(ct);
+
+        return manifests
+            .GroupBy(m => m.Name)
+            .SelectMany(g => g
+                .OrderByDescending(m =>
+                {
+                    var parsed = Version.TryParse(m.Version, out var v) ? v : new Version(0, 0, 0);
+                    return parsed;
+                })
+                .ThenByDescending(m => m.PublishedAt))
+            .ToList();
     }
 }
 
