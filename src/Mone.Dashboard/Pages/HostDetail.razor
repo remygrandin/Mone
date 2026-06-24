@@ -1543,11 +1543,14 @@ else
             await Api.ForceStatusAsync(Id, checkerPluginId, status);
             Snackbar.Add($"Forced '{checkerPluginId}' to {status}.", Severity.Success);
 
-            // Refresh status history to update the lookup for this specific checker only.
+            // Reload status history and update only the affected checker's status indicator.
             var statusHistory = await Api.GetStatusHistoryAsync(Id);
-            _checkerStatusLookup = statusHistory
-                .GroupBy(s => s.CheckerId)
-                .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.Timestamp).First().CurrentStatus);
+            var latestForChecker = statusHistory
+                .Where(s => s.CheckerId == checkerPluginId)
+                .OrderByDescending(s => s.Timestamp)
+                .FirstOrDefault();
+            if (latestForChecker is not null)
+                _checkerStatusLookup[checkerPluginId] = latestForChecker.CurrentStatus;
             StateHasChanged();
         }
         catch (ApiException ax)
