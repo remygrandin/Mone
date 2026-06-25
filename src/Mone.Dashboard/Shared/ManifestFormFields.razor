@@ -88,6 +88,19 @@
                               AdornmentIcon="@(_secretVisible.Contains(field.Key) ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
                               OnAdornmentClick="@(() => ToggleSecretVisibility(field.Key))" />
                 break;
+
+            case ConfigFieldTypeEnum.Credentials:
+                <MudAutocomplete T="string"
+                                 Label="@field.DisplayName"
+                                 HelperText="@field.Description"
+                                 Value="@GetValue(field.Key)"
+                                 ValueChanged="@(v => SetValue(field.Key, v))"
+                                 Required="@field.Required"
+                                 SearchFunc="@SearchCredentials"
+                                 Clearable="true"
+                                 OpenIcon="@Icons.Material.Filled.Search"
+                                 AdornmentIcon="@Icons.Material.Filled.Search" />
+                break;
         }
     </div>
 }
@@ -104,6 +117,9 @@
 
     [Parameter]
     public string[] MetricKeySuggestions { get; set; } = [];
+
+    [Inject]
+    private HttpClient HttpClient { get; set; } = null!;
 
     private readonly HashSet<string> _secretVisible = new();
 
@@ -144,5 +160,33 @@
     {
         if (!_secretVisible.Add(key))
             _secretVisible.Remove(key);
+    }
+
+    private async Task<IEnumerable<string>> SearchCredentials(string value, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await HttpClient.GetFromJsonAsync<List<CredentialDto>>("/api/credentials", cancellationToken);
+            if (response is null)
+                return Enumerable.Empty<string>();
+
+            var filtered = response
+                .Where(c => string.IsNullOrEmpty(value) || c.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+                .Select(c => c.Id)
+                .OrderBy(id => id)
+                .ToList();
+
+            return filtered;
+        }
+        catch
+        {
+            return Enumerable.Empty<string>();
+        }
+    }
+
+    private class CredentialDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
     }
 }

@@ -36,5 +36,6 @@ public enum ConfigFieldTypeEnum
     Double,
     Boolean,
     Choice,
-    Secret
+    Secret,
+    Credentials
 }
