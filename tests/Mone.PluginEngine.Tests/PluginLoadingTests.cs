@@ -61,9 +61,12 @@ public class PluginLoadingTests : IDisposable
         var dllPath = TestPluginBuilder.BuildPlugin("TestCheckerPlugin");
         _engine.LoadPluginAssembly(dllPath);
 
-        var registration = _engine.Registry.GetAll().Single();
-        Assert.Equal(PluginKind.Checker, registration.Metadata.Kind);
-        Assert.Equal(CheckerInvocationMode.OnProbeResult, registration.Metadata.InvocationMode);
+        var registrations = _engine.Registry.GetAll();
+        Assert.Equal(2, registrations.Count); // TestCheckerPlugin contains 2 checkers
+
+        var probeResultChecker = registrations.Single(r => r.Metadata.InvocationMode == CheckerInvocationMode.OnProbeResult);
+        Assert.Equal(PluginKind.Checker, probeResultChecker.Metadata.Kind);
+        Assert.Equal(CheckerInvocationMode.OnProbeResult, probeResultChecker.Metadata.InvocationMode);
     }
 
     [Fact]

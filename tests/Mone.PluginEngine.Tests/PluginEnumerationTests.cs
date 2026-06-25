@@ -25,9 +25,9 @@ public class PluginEnumerationTests : IDisposable
         var notifiers = _engine.GetPlugins<INotificationPlugin>();
 
         Assert.Single(probes);
-        Assert.Single(checkers);
+        Assert.Equal(2, checkers.Count); // TestCheckerPlugin contains 2 checkers
         Assert.Single(notifiers);
-        Assert.Equal(3, _engine.Registry.Count);
+        Assert.Equal(4, _engine.Registry.Count); // 1 probe + 2 checkers + 1 notifier
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class PluginEnumerationTests : IDisposable
         var notifiersByKind = _engine.GetPluginsByKind(PluginKind.Notification);
 
         Assert.Single(probesByKind);
-        Assert.Single(checkersByKind);
+        Assert.Equal(2, checkersByKind.Count); // TestCheckerPlugin contains 2 checkers
         Assert.Single(notifiersByKind);
     }
 
@@ -54,7 +54,7 @@ public class PluginEnumerationTests : IDisposable
         _engine.LoadPluginAssembly(TestPluginBuilder.BuildPlugin("TestNotificationPlugin"));
 
         Assert.Equal(1, _engine.Registry.CountByKind(PluginKind.Probe));
-        Assert.Equal(1, _engine.Registry.CountByKind(PluginKind.Checker));
+        Assert.Equal(2, _engine.Registry.CountByKind(PluginKind.Checker)); // TestCheckerPlugin contains 2 checkers
         Assert.Equal(1, _engine.Registry.CountByKind(PluginKind.Notification));
     }
 
