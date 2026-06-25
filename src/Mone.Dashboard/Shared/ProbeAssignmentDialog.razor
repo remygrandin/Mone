@@ -34,9 +34,8 @@
         }
 
         <MudSelect T="Guid?" Label="Run on node" Value="Model.ExecutorNodeId" ValueChanged="@(v => Model.ExecutorNodeId = v)"
-                   Clearable="true" Class="mt-3"
-                   HelperText="Leave empty to run on every probe executor. Bind to pin this probe to a single node.">
-            <MudSelectItem T="Guid?" Value="@((Guid?)null)">Any node</MudSelectItem>
+                   Required="@(ProbeNodes().Any())" Class="mt-3"
+                   HelperText="Select a probe executor node to run this assignment.">
             @foreach (var node in ProbeNodes())
             {
                 <MudSelectItem T="Guid?" Value="@node.Id">@node.Name</MudSelectItem>
@@ -90,6 +89,13 @@
             Model.ProbePluginId = plugin.PluginId;
             if (string.IsNullOrWhiteSpace(Model.Name))
                 Model.Name = plugin.Name;
+            // Default to first available probe node if creating new assignment
+            if (!IsEdit && !Model.ExecutorNodeId.HasValue)
+            {
+                var firstNode = ProbeNodes().FirstOrDefault();
+                if (firstNode is not null)
+                    Model.ExecutorNodeId = firstNode.Id;
+            }
         }
     }
 
@@ -106,6 +112,13 @@
         Model.TargetAddressOverride = string.IsNullOrWhiteSpace(Model.TargetAddressOverride)
             ? null
             : Model.TargetAddressOverride.Trim();
+        // Ensure node is selected for creation
+        if (!IsEdit && !Model.ExecutorNodeId.HasValue)
+        {
+            var firstNode = ProbeNodes().FirstOrDefault();
+            if (firstNode is not null)
+                Model.ExecutorNodeId = firstNode.Id;
+        }
         MudDialog.Close(DialogResult.Ok(Model));
     }
 
