@@ -200,10 +200,7 @@
 
     private string FormatCredential(CredentialDto credential)
     {
-        var masked = string.IsNullOrEmpty(credential.Password)
-            ? "(no password)"
-            : new string('•', Math.Min(credential.Password.Length, 8));
-        return $"{credential.Name} ({credential.Username}) {masked}";
+        return $"{credential.Name} ({credential.Username})";
     }
 
     private async Task<IEnumerable<CredentialDto>> SearchCredentials(string value, CancellationToken cancellationToken)
