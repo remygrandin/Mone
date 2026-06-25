@@ -90,14 +90,15 @@
                 break;
 
             case ConfigFieldTypeEnum.Credentials:
-                <MudAutocomplete T="string"
+                <MudAutocomplete T="CredentialDto"
                                  Label="@field.DisplayName"
                                  HelperText="@field.Description"
-                                 Value="@GetValue(field.Key)"
-                                 ValueChanged="@(v => SetValue(field.Key, v))"
+                                 Value="@GetCredential(field.Key)"
+                                 ValueChanged="@(v => SetCredential(field.Key, v))"
                                  Required="@field.Required"
                                  SearchFunc="@SearchCredentials"
                                  Clearable="true"
+                                 ToStringFunc="@(c => c == null ? string.Empty : FormatCredential(c))"
                                  OpenIcon="@Icons.Material.Filled.Search"
                                  AdornmentIcon="@Icons.Material.Filled.Search" />
                 break;
@@ -122,6 +123,26 @@
     private HttpClient HttpClient { get; set; } = null!;
 
     private readonly HashSet<string> _secretVisible = new();
+    private List<CredentialDto> _allCredentials = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCredentials();
+    }
+
+    private async Task LoadCredentials()
+    {
+        try
+        {
+            var response = await HttpClient.GetFromJsonAsync<List<CredentialDto>>("/api/credentials");
+            if (response is not null)
+                _allCredentials = response;
+        }
+        catch
+        {
+            _allCredentials = new();
+        }
+    }
 
     private string GetValue(string key)
     {
@@ -130,6 +151,12 @@
 
         var field = Fields.FirstOrDefault(f => f.Key == key);
         return field?.DefaultValue ?? string.Empty;
+    }
+
+    private CredentialDto? GetCredential(string key)
+    {
+        var id = GetValue(key);
+        return _allCredentials.FirstOrDefault(c => c.Id == id);
     }
 
     private int? GetIntValue(string key)
@@ -156,37 +183,47 @@
         await ValuesChanged.InvokeAsync(Values);
     }
 
+    private async Task SetCredential(string key, CredentialDto? credential)
+    {
+        if (credential is not null)
+        {
+            Values[key] = credential.Id;
+            await ValuesChanged.InvokeAsync(Values);
+        }
+    }
+
     private void ToggleSecretVisibility(string key)
     {
         if (!_secretVisible.Add(key))
             _secretVisible.Remove(key);
     }
 
-    private async Task<IEnumerable<string>> SearchCredentials(string value, CancellationToken cancellationToken)
+    private string FormatCredential(CredentialDto credential)
     {
-        try
-        {
-            var response = await HttpClient.GetFromJsonAsync<List<CredentialDto>>("/api/credentials", cancellationToken);
-            if (response is null)
-                return Enumerable.Empty<string>();
+        var masked = string.IsNullOrEmpty(credential.Password)
+            ? "(no password)"
+            : new string('•', Math.Min(credential.Password.Length, 8));
+        return $"{credential.Name} ({credential.Username}) {masked}";
+    }
 
-            var filtered = response
-                .Where(c => string.IsNullOrEmpty(value) || c.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
-                .Select(c => c.Id)
-                .OrderBy(id => id)
-                .ToList();
+    private async Task<IEnumerable<CredentialDto>> SearchCredentials(string value, CancellationToken cancellationToken)
+    {
+        if (_allCredentials.Count == 0)
+            await LoadCredentials();
 
-            return filtered;
-        }
-        catch
-        {
-            return Enumerable.Empty<string>();
-        }
+        return _allCredentials
+            .Where(c => string.IsNullOrEmpty(value) ||
+                        c.Name.Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                        c.Username.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.Name)
+            .ToList();
     }
 
     private class CredentialDto
     {
         public string Id { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
     }
 }
