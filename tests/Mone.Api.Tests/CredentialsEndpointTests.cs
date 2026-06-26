@@ -21,11 +21,11 @@ public class CredentialsEndpointTests
 
         var request = new CredentialsEndpoints.CreateCredentialsRequest("TestCreds", "testuser", "testpass123");
 
-        var response = await client.PostAsJsonAsync("/api/credentials", request);
+        var response = await client.PostAsJsonAsync("/api/credentials", request, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var created = await response.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+        var created = await response.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(created);
         Assert.NotEqual(Guid.Empty, created.Id);
         Assert.Equal("TestCreds", created.Name);
@@ -39,10 +39,10 @@ public class CredentialsEndpointTests
             $"cred_dup_{Guid.NewGuid():N}@test.com", "ValidPass1!");
 
         var request = new CredentialsEndpoints.CreateCredentialsRequest("DupTest", "user1", "pass1");
-        await client.PostAsJsonAsync("/api/credentials", request);
+        await client.PostAsJsonAsync("/api/credentials", request, cancellationToken: TestContext.Current.CancellationToken);
 
         var request2 = new CredentialsEndpoints.CreateCredentialsRequest("DupTest", "user2", "pass2");
-        var response = await client.PostAsJsonAsync("/api/credentials", request2);
+        var response = await client.PostAsJsonAsync("/api/credentials", request2, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -54,14 +54,14 @@ public class CredentialsEndpointTests
             $"cred_list_{Guid.NewGuid():N}@test.com", "ValidPass1!");
 
         var request = new CredentialsEndpoints.CreateCredentialsRequest("ListTest", "listuser", "listpass");
-        var createResp = await client.PostAsJsonAsync("/api/credentials", request);
-        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+        var createResp = await client.PostAsJsonAsync("/api/credentials", request, cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/credentials");
+        var response = await client.GetAsync("/api/credentials", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.NotEmpty(body);
         Assert.Contains("ListTest", body);
     }
@@ -73,13 +73,13 @@ public class CredentialsEndpointTests
             $"cred_getid_{Guid.NewGuid():N}@test.com", "ValidPass1!");
 
         var createResp = await client.PostAsJsonAsync("/api/credentials",
-            new CredentialsEndpoints.CreateCredentialsRequest("GetTest", "getuser", "getpass"));
-        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+            new CredentialsEndpoints.CreateCredentialsRequest("GetTest", "getuser", "getpass"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/credentials/{created!.Id}");
+        var response = await client.GetAsync($"/api/credentials/{created!.Id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var cred = await response.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+        var cred = await response.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(created.Id, cred!.Id);
         Assert.Equal("GetTest", cred.Name);
     }
@@ -90,7 +90,7 @@ public class CredentialsEndpointTests
         using var client = await _fixture.CreateAuthenticatedClientAsync(
             $"cred_404_{Guid.NewGuid():N}@test.com", "ValidPass1!");
 
-        var response = await client.GetAsync($"/api/credentials/{Guid.NewGuid()}");
+        var response = await client.GetAsync($"/api/credentials/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -102,14 +102,14 @@ public class CredentialsEndpointTests
             $"cred_update_{Guid.NewGuid():N}@test.com", "ValidPass1!");
 
         var createResp = await client.PostAsJsonAsync("/api/credentials",
-            new CredentialsEndpoints.CreateCredentialsRequest("UpdateTest", "olduser", "oldpass"));
-        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+            new CredentialsEndpoints.CreateCredentialsRequest("UpdateTest", "olduser", "oldpass"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var updateReq = new CredentialsEndpoints.UpdateCredentialsRequest(null, "newuser", "newpass");
-        var response = await client.PutAsJsonAsync($"/api/credentials/{created!.Id}", updateReq);
+        var response = await client.PutAsJsonAsync($"/api/credentials/{created!.Id}", updateReq, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var updated = await response.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+        var updated = await response.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("newuser", updated!.Username);
     }
 
@@ -120,14 +120,14 @@ public class CredentialsEndpointTests
             $"cred_del_{Guid.NewGuid():N}@test.com", "ValidPass1!");
 
         var createResp = await client.PostAsJsonAsync("/api/credentials",
-            new CredentialsEndpoints.CreateCredentialsRequest("DelTest", "deluser", "delpass"));
-        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>();
+            new CredentialsEndpoints.CreateCredentialsRequest("DelTest", "deluser", "delpass"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<CredentialsEndpoints.CredentialsResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.DeleteAsync($"/api/credentials/{created!.Id}");
+        var response = await client.DeleteAsync($"/api/credentials/{created!.Id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        var getResp = await client.GetAsync($"/api/credentials/{created.Id}");
+        var getResp = await client.GetAsync($"/api/credentials/{created.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, getResp.StatusCode);
     }
 }

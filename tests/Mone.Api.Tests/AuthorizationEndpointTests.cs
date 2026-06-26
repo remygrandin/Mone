@@ -59,7 +59,7 @@ public class AuthorizationEndpointTests
     {
         var (client, _) = await _fixture.CreatePlainClientAsync($"authz-none-{Guid.NewGuid():N}@test.com");
 
-        var response = await client.GetAsync("/api/hosts");
+        var response = await client.GetAsync("/api/hosts", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         client.Dispose();
@@ -70,10 +70,10 @@ public class AuthorizationEndpointTests
     {
         var (client, _) = await _fixture.CreatePlainClientAsync($"authz-self-{Guid.NewGuid():N}@test.com");
 
-        var response = await client.GetAsync("/api/auth/me/permissions");
+        var response = await client.GetAsync("/api/auth/me/permissions", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var caps = await response.Content.ReadFromJsonAsync<MyPermissionsResponse>();
+        var caps = await response.Content.ReadFromJsonAsync<MyPermissionsResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(caps);
         Assert.Empty(caps!.Capabilities); // zero grants
         client.Dispose();
@@ -101,9 +101,9 @@ public class AuthorizationEndpointTests
             return Task.CompletedTask;
         });
 
-        var inResp = await client.GetAsync($"/api/hosts/{hostIn.Id}");
-        var outResp = await client.GetAsync($"/api/hosts/{hostOut.Id}");
-        var listResp = await client.GetAsync("/api/hosts"); // collection => Global target, scoped grant ignored
+        var inResp = await client.GetAsync($"/api/hosts/{hostIn.Id}", TestContext.Current.CancellationToken);
+        var outResp = await client.GetAsync($"/api/hosts/{hostOut.Id}", TestContext.Current.CancellationToken);
+        var listResp = await client.GetAsync("/api/hosts", TestContext.Current.CancellationToken); // collection => Global target, scoped grant ignored
 
         Assert.Equal(HttpStatusCode.OK, inResp.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, outResp.StatusCode);
@@ -129,9 +129,9 @@ public class AuthorizationEndpointTests
             return Task.CompletedTask;
         });
 
-        var getResp = await client.GetAsync($"/api/hosts/{host.Id}");
+        var getResp = await client.GetAsync($"/api/hosts/{host.Id}", TestContext.Current.CancellationToken);
         var putResp = await client.PutAsJsonAsync($"/api/hosts/{host.Id}",
-            new UpdateHostRequest(host.Name, "10.0.0.2", true));
+            new UpdateHostRequest(host.Name, "10.0.0.2", true), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, putResp.StatusCode);

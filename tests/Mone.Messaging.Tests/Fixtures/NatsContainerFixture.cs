@@ -10,7 +10,7 @@ public sealed class NatsContainerFixture : IAsyncLifetime
 
     public string NatsUrl { get; private set; } = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _nats = new ContainerBuilder()
             .WithImage("nats:latest")
@@ -25,7 +25,7 @@ public sealed class NatsContainerFixture : IAsyncLifetime
         NatsUrl = $"nats://localhost:{_nats.GetMappedPublicPort(4222)}";
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _nats.DisposeAsync();
     }

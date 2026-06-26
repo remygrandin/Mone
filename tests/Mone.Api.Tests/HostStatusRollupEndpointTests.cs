@@ -21,17 +21,17 @@ public class HostStatusRollupEndpointTests
     public async Task Rollup_WithN2_TransitionsDegradedThenUnhealthy()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"rollup_n2_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"rollup_n2_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"rollup-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"rollup-host-{Guid.NewGuid():N}", "10.0.0.1"), TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         var hostId = host!.Id;
 
         var policyResp = await client.PutAsJsonAsync(
-            $"/api/hosts/{hostId}/error-policy", new UpdateHostErrorPolicyRequest(2));
+            $"/api/hosts/{hostId}/error-policy", new UpdateHostErrorPolicyRequest(2), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, policyResp.StatusCode);
-        var policy = await policyResp.Content.ReadFromJsonAsync<HostErrorPolicyResponse>();
+        var policy = await policyResp.Content.ReadFromJsonAsync<HostErrorPolicyResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, policy!.ErrorThreshold);
 
         var now = DateTimeOffset.UtcNow;
@@ -48,16 +48,16 @@ public class HostStatusRollupEndpointTests
                 PreviousStatus = MonitoringStatus.Healthy,
                 CurrentStatus = MonitoringStatus.Unhealthy
             });
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var degradedResp = await client.GetAsync($"/api/hosts/{hostId}/status/rollup");
+        var degradedResp = await client.GetAsync($"/api/hosts/{hostId}/status/rollup", TestContext.Current.CancellationToken);
         if (degradedResp.StatusCode != HttpStatusCode.OK)
         {
-            var body = await degradedResp.Content.ReadAsStringAsync();
+            var body = await degradedResp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Fail($"Expected 200 but got {degradedResp.StatusCode}: {body}");
         }
-        var degraded = await degradedResp.Content.ReadFromJsonAsync<HostStatusRollupResponse>();
+        var degraded = await degradedResp.Content.ReadFromJsonAsync<HostStatusRollupResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(degraded);
         Assert.Equal(MonitoringStatus.Degraded, degraded.Status);
         Assert.Equal(2, degraded.ErrorThreshold);
@@ -76,12 +76,12 @@ public class HostStatusRollupEndpointTests
                 PreviousStatus = MonitoringStatus.Healthy,
                 CurrentStatus = MonitoringStatus.Unhealthy
             });
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var unhealthyResp = await client.GetAsync($"/api/hosts/{hostId}/status/rollup");
+        var unhealthyResp = await client.GetAsync($"/api/hosts/{hostId}/status/rollup", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, unhealthyResp.StatusCode);
-        var unhealthy = await unhealthyResp.Content.ReadFromJsonAsync<HostStatusRollupResponse>();
+        var unhealthy = await unhealthyResp.Content.ReadFromJsonAsync<HostStatusRollupResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(unhealthy);
         Assert.Equal(MonitoringStatus.Unhealthy, unhealthy.Status);
         Assert.Equal(2, unhealthy.CheckerCount);
@@ -92,9 +92,9 @@ public class HostStatusRollupEndpointTests
     public async Task Rollup_ForUnknownHost_Returns404()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"rollup_404_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"rollup_404_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/hosts/{Guid.NewGuid()}/status/rollup");
+        var response = await client.GetAsync($"/api/hosts/{Guid.NewGuid()}/status/rollup", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -103,14 +103,14 @@ public class HostStatusRollupEndpointTests
     public async Task UpdateErrorPolicy_WithZeroThreshold_Returns400()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"rollup_zero_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"rollup_zero_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"rollup-zero-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"rollup-zero-host-{Guid.NewGuid():N}", "10.0.0.1"), TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var response = await client.PutAsJsonAsync(
-            $"/api/hosts/{host!.Id}/error-policy", new UpdateHostErrorPolicyRequest(0));
+            $"/api/hosts/{host!.Id}/error-policy", new UpdateHostErrorPolicyRequest(0), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

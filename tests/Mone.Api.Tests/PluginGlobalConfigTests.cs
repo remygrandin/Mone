@@ -17,20 +17,20 @@ public class PluginGlobalConfigTests
     public async Task PutThenGet_RoundTrip()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"gc_rt_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"gc_rt_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var pluginId = $"TestPlugin_{Guid.NewGuid():N}";
         var configJson = "{\"smtp_host\":\"mail.example.com\",\"port\":587}";
 
         var putResp = await client.PutAsJsonAsync(
             $"/api/plugins/{pluginId}/global-config",
-            new UpsertPluginGlobalConfigRequest(configJson));
+            new UpsertPluginGlobalConfigRequest(configJson), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, putResp.StatusCode);
 
-        var getResp = await client.GetAsync($"/api/plugins/{pluginId}/global-config");
+        var getResp = await client.GetAsync($"/api/plugins/{pluginId}/global-config", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
 
-        var config = await getResp.Content.ReadFromJsonAsync<PluginGlobalConfigResponse>();
+        var config = await getResp.Content.ReadFromJsonAsync<PluginGlobalConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(config);
         Assert.Equal(pluginId, config.PluginId);
         Assert.Equal(configJson, config.ConfigJson);
@@ -40,14 +40,14 @@ public class PluginGlobalConfigTests
     public async Task Get_UnknownPlugin_ReturnsEmptyObject()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"gc_unk_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"gc_unk_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var pluginId = $"NonExistent_{Guid.NewGuid():N}";
-        var response = await client.GetAsync($"/api/plugins/{pluginId}/global-config");
+        var response = await client.GetAsync($"/api/plugins/{pluginId}/global-config", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var config = await response.Content.ReadFromJsonAsync<PluginGlobalConfigResponse>();
+        var config = await response.Content.ReadFromJsonAsync<PluginGlobalConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(config);
         Assert.Equal("{}", config.ConfigJson);
     }
@@ -56,21 +56,21 @@ public class PluginGlobalConfigTests
     public async Task Put_Upsert_OverwritesPreviousValue()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"gc_ups_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"gc_ups_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var pluginId = $"UpsertPlugin_{Guid.NewGuid():N}";
 
         await client.PutAsJsonAsync(
             $"/api/plugins/{pluginId}/global-config",
-            new UpsertPluginGlobalConfigRequest("{\"key\":\"old\"}"));
+            new UpsertPluginGlobalConfigRequest("{\"key\":\"old\"}"), cancellationToken: TestContext.Current.CancellationToken);
 
         var putResp = await client.PutAsJsonAsync(
             $"/api/plugins/{pluginId}/global-config",
-            new UpsertPluginGlobalConfigRequest("{\"key\":\"new\"}"));
+            new UpsertPluginGlobalConfigRequest("{\"key\":\"new\"}"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, putResp.StatusCode);
 
-        var getResp = await client.GetAsync($"/api/plugins/{pluginId}/global-config");
-        var config = await getResp.Content.ReadFromJsonAsync<PluginGlobalConfigResponse>();
+        var getResp = await client.GetAsync($"/api/plugins/{pluginId}/global-config", TestContext.Current.CancellationToken);
+        var config = await getResp.Content.ReadFromJsonAsync<PluginGlobalConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(config);
         Assert.Equal("{\"key\":\"new\"}", config.ConfigJson);
     }

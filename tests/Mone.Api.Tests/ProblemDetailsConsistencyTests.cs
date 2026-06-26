@@ -24,7 +24,7 @@ public class ProblemDetailsConsistencyTests
         Assert.Equal(expected, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
 
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(problem);
         Assert.Equal((int)expected, problem.Status);
     }
@@ -33,9 +33,9 @@ public class ProblemDetailsConsistencyTests
     public async Task CreateHost_EmptyName_Returns400ProblemDetails()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"pd_host400_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"pd_host400_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest("", "10.0.0.1"));
+        var response = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest("", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertProblemDetailsAsync(response, HttpStatusCode.BadRequest);
     }
@@ -44,13 +44,13 @@ public class ProblemDetailsConsistencyTests
     public async Task CreateHost_DuplicateName_Returns409ProblemDetails()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"pd_host409_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"pd_host409_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var name = $"pd-dup-{Guid.NewGuid():N}";
-        var first = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.1"));
+        var first = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
-        var response = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.2"));
+        var response = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.2"), cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertProblemDetailsAsync(response, HttpStatusCode.Conflict);
     }
@@ -59,10 +59,10 @@ public class ProblemDetailsConsistencyTests
     public async Task CreateHostGroup_InvalidParent_Returns400ProblemDetails()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"pd_hg400_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"pd_hg400_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var response = await client.PostAsJsonAsync("/api/host-groups",
-            new CreateHostGroupRequest($"grp-{Guid.NewGuid():N}", null, Guid.NewGuid()));
+            new CreateHostGroupRequest($"grp-{Guid.NewGuid():N}", null, Guid.NewGuid()), cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertProblemDetailsAsync(response, HttpStatusCode.BadRequest);
     }
@@ -74,9 +74,9 @@ public class ProblemDetailsConsistencyTests
     public async Task GetUnknownResource_Returns404ProblemDetails(string family)
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"pd_404_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"pd_404_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"{family}/{Guid.NewGuid()}");
+        var response = await client.GetAsync($"{family}/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
         await AssertProblemDetailsAsync(response, HttpStatusCode.NotFound);
     }
@@ -87,7 +87,7 @@ public class ProblemDetailsConsistencyTests
         using var client = _fixture.Factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/auth/login",
-            new LoginRequest($"nobody_{Guid.NewGuid():N}@test.com", "WrongPass1!"));
+            new LoginRequest($"nobody_{Guid.NewGuid():N}@test.com", "WrongPass1!"), cancellationToken: TestContext.Current.CancellationToken);
 
         await AssertProblemDetailsAsync(response, HttpStatusCode.Unauthorized);
     }
@@ -95,10 +95,10 @@ public class ProblemDetailsConsistencyTests
     [Fact]
     public async Task ListHosts_WithoutPermission_Returns403ProblemDetails()
     {
-        var (client, _) = await _fixture.CreatePlainClientAsync($"pd_403_{Guid.NewGuid():N}@test.com");
+        var (client, _) = await _fixture.CreatePlainClientAsync($"pd_403_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
         using var _client = client;
 
-        var response = await client.GetAsync("/api/hosts");
+        var response = await client.GetAsync("/api/hosts", TestContext.Current.CancellationToken);
 
         await AssertProblemDetailsAsync(response, HttpStatusCode.Forbidden);
     }

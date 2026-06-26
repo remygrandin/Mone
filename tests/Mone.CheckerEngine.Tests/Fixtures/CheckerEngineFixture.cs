@@ -34,7 +34,7 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
     public string NatsUrl => $"nats://localhost:{_nats.GetMappedPublicPort(4222)}";
     public NatsConnection NatsConnection => _natsConnection;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _nats = new ContainerBuilder()
             .WithImage("nats:latest")
@@ -136,7 +136,7 @@ public sealed class CheckerEngineFixture : IAsyncLifetime
         return engine;
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _natsConnection.DisposeAsync();
         await _nats.DisposeAsync();

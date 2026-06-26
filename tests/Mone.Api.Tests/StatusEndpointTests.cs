@@ -21,11 +21,11 @@ public class StatusEndpointTests
     public async Task GetLatestStatus_WithSeededData_ReturnsLatestPerChecker()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"status_latest_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"status_latest_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"status-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"status-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         var hostId = host!.Id;
 
         using var scope = _fixture.Factory.Services.CreateScope();
@@ -57,19 +57,19 @@ public class StatusEndpointTests
                 PreviousStatus = MonitoringStatus.Unknown,
                 CurrentStatus = MonitoringStatus.Unhealthy
             });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/hosts/{hostId}/status/latest");
+        var response = await client.GetAsync($"/api/hosts/{hostId}/status/latest", TestContext.Current.CancellationToken);
 
         if (response.StatusCode == HttpStatusCode.InternalServerError)
         {
-            var body = await response.Content.ReadAsStringAsync();
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Fail($"Server returned 500: {body}");
         }
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var statuses = await response.Content.ReadFromJsonAsync<StatusResponse[]>();
+        var statuses = await response.Content.ReadFromJsonAsync<StatusResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(statuses);
         Assert.Equal(2, statuses.Length);
 
@@ -84,11 +84,11 @@ public class StatusEndpointTests
     public async Task GetStatusHistory_WithTimeRange_ReturnsFiltered()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"status_history_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"status_history_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"history-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"history-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         var hostId = host!.Id;
 
         using var scope = _fixture.Factory.Services.CreateScope();
@@ -112,19 +112,19 @@ public class StatusEndpointTests
                 PreviousStatus = MonitoringStatus.Healthy,
                 CurrentStatus = MonitoringStatus.Degraded
             });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var from = Uri.EscapeDataString(now.AddHours(-1).ToString("O"));
         var to = Uri.EscapeDataString(now.ToString("O"));
-        var response = await client.GetAsync($"/api/hosts/{hostId}/status/history?from={from}&to={to}");
+        var response = await client.GetAsync($"/api/hosts/{hostId}/status/history?from={from}&to={to}", TestContext.Current.CancellationToken);
 
         if (response.StatusCode != HttpStatusCode.OK)
         {
-            var body = await response.Content.ReadAsStringAsync();
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Fail($"Expected 200 but got {response.StatusCode}: {body}");
         }
 
-        var history = await response.Content.ReadFromJsonAsync<StatusResponse[]>();
+        var history = await response.Content.ReadFromJsonAsync<StatusResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(history);
         Assert.Single(history);
         Assert.Equal(MonitoringStatus.Degraded, history[0].CurrentStatus);

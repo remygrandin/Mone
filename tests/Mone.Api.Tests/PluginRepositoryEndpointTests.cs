@@ -116,14 +116,14 @@ public class PluginRepositoryEndpointTests
     public async Task CreateRepo_Returns201()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"repo_create_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"repo_create_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var request = new AddRepositoryRequest("test-owner", "test-repo", "main", "Test Repo");
-        var response = await client.PostAsJsonAsync("/api/plugin-repos", request);
+        var response = await client.PostAsJsonAsync("/api/plugin-repos", request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var repo = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+        var repo = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(repo);
         Assert.NotEqual(Guid.Empty, repo.Id);
         Assert.Equal("test-owner", repo.Owner);
@@ -137,14 +137,14 @@ public class PluginRepositoryEndpointTests
     public async Task CreateRepo_DefaultDisplayName()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"repo_defname_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"repo_defname_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var request = new AddRepositoryRequest("owner1", "repo1");
-        var response = await client.PostAsJsonAsync("/api/plugin-repos", request);
+        var response = await client.PostAsJsonAsync("/api/plugin-repos", request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var repo = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+        var repo = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(repo);
         Assert.Equal("owner1/repo1", repo.DisplayName);
     }
@@ -153,16 +153,16 @@ public class PluginRepositoryEndpointTests
     public async Task ListRepos_ReturnsCreated()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"repo_list_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"repo_list_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var uniqueName = $"ListTest-{Guid.NewGuid():N}";
         await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("list-owner", "list-repo", DisplayName: uniqueName));
+            new AddRepositoryRequest("list-owner", "list-repo", DisplayName: uniqueName), TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/plugin-repos");
+        var response = await client.GetAsync("/api/plugin-repos", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var repos = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse[]>();
+        var repos = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(repos);
         Assert.Contains(repos, r => r.DisplayName == uniqueName);
     }
@@ -171,16 +171,16 @@ public class PluginRepositoryEndpointTests
     public async Task GetRepoById_ReturnsRepo()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"repo_getid_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"repo_getid_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("getid-owner", "getid-repo", DisplayName: "GetById Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest("getid-owner", "getid-repo", DisplayName: "GetById Repo"), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/plugin-repos/{created!.Id}");
+        var response = await client.GetAsync($"/api/plugin-repos/{created!.Id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var repo = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+        var repo = await response.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(created.Id, repo!.Id);
         Assert.Equal("getid-owner", repo.Owner);
     }
@@ -189,9 +189,9 @@ public class PluginRepositoryEndpointTests
     public async Task GetRepoById_NonExistent_Returns404()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"repo_404_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"repo_404_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/plugin-repos/{Guid.NewGuid()}");
+        var response = await client.GetAsync($"/api/plugin-repos/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -200,17 +200,17 @@ public class PluginRepositoryEndpointTests
     public async Task DeleteRepo_Returns204()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"repo_delete_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"repo_delete_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("del-owner", "del-repo", DisplayName: "Delete Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest("del-owner", "del-repo", DisplayName: "Delete Repo"), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleteResp = await client.DeleteAsync($"/api/plugin-repos/{created!.Id}");
+        var deleteResp = await client.DeleteAsync($"/api/plugin-repos/{created!.Id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
 
-        var getResp = await client.GetAsync($"/api/plugin-repos/{created.Id}");
+        var getResp = await client.GetAsync($"/api/plugin-repos/{created.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, getResp.StatusCode);
     }
 
@@ -222,9 +222,9 @@ public class PluginRepositoryEndpointTests
     public async Task SyncRepo_NonExistent_Returns404()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"sync_404_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"sync_404_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.PostAsync($"/api/plugin-repos/{Guid.NewGuid()}/sync", null);
+        var response = await client.PostAsync($"/api/plugin-repos/{Guid.NewGuid()}/sync", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -255,10 +255,10 @@ public class PluginRepositoryEndpointTests
         using var client = await CreateAuthClientWithHandler(handler, $"sync_valid_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest($"sync-{runId}", "sync-repo", "main", "Sync Test"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest($"sync-{runId}", "sync-repo", "main", "Sync Test"), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var syncResp = await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
+        var syncResp = await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, syncResp.StatusCode);
 
         // Cross-test pollution from fire-and-forget background syncs on the
@@ -269,7 +269,7 @@ public class PluginRepositoryEndpointTests
         var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
         var rows = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .ToListAsync(db.PluginManifests.Where(m =>
-                m.RepositoryId == created.Id && m.Name == pluginName));
+                m.RepositoryId == created.Id && m.Name == pluginName), TestContext.Current.CancellationToken);
 
         var row = Assert.Single(rows);
         Assert.Equal("2.0.0", row.Version);
@@ -289,14 +289,14 @@ public class PluginRepositoryEndpointTests
             $"sync_gh404_{Guid.NewGuid():N}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("missing-owner", "missing-repo", DisplayName: "Missing Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest("missing-owner", "missing-repo", DisplayName: "Missing Repo"), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var syncResp = await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
+        var syncResp = await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, syncResp.StatusCode);
 
-        var repoResp = await client.GetAsync($"/api/plugin-repos/{created.Id}");
-        var repo = await repoResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+        var repoResp = await client.GetAsync($"/api/plugin-repos/{created.Id}", TestContext.Current.CancellationToken);
+        var repo = await repoResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(repo!.LastSyncError);
         Assert.Contains("404", repo.LastSyncError);
     }
@@ -332,15 +332,15 @@ public class PluginRepositoryEndpointTests
             $"sync_304_{Guid.NewGuid():N}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest("etag-owner", "etag-repo", DisplayName: "ETag Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest("etag-owner", "etag-repo", DisplayName: "ETag Repo"), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
-        var syncResp2 = await client.PostAsync($"/api/plugin-repos/{created.Id}/sync", null);
+        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null, TestContext.Current.CancellationToken);
+        var syncResp2 = await client.PostAsync($"/api/plugin-repos/{created.Id}/sync", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, syncResp2.StatusCode);
 
-        var repo = await (await client.GetAsync($"/api/plugin-repos/{created.Id}"))
-            .Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+        var repo = await (await client.GetAsync($"/api/plugin-repos/{created.Id}", TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Null(repo!.LastSyncError);
         Assert.NotNull(repo.LastSyncedAt);
     }
@@ -380,20 +380,20 @@ public class PluginRepositoryEndpointTests
         using var client = await CreateAuthClientWithHandler(handler, $"install_valid_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest($"install-{runId}", "install-repo", DisplayName: "Install Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest($"install-{runId}", "install-repo", DisplayName: "Install Repo"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
+        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null, TestContext.Current.CancellationToken);
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
         var versionId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .SingleAsync(db.PluginManifests
                 .Where(m => m.RepositoryId == created.Id && m.Name == pluginName)
-                .Select(m => m.Id));
+                .Select(m => m.Id), TestContext.Current.CancellationToken);
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(versionId));
+            new InstallPluginRequest(versionId), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, installResp.StatusCode);
     }
 
@@ -430,20 +430,20 @@ public class PluginRepositoryEndpointTests
         using var client = await CreateAuthClientWithHandler(handler, $"install_badhash_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest($"hash-{runId}", "hash-repo", DisplayName: "Hash Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest($"hash-{runId}", "hash-repo", DisplayName: "Hash Repo"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
+        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null, TestContext.Current.CancellationToken);
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
         var versionId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .SingleAsync(db.PluginManifests
                 .Where(m => m.RepositoryId == created.Id && m.Name == pluginName)
-                .Select(m => m.Id));
+                .Select(m => m.Id), TestContext.Current.CancellationToken);
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(versionId));
+            new InstallPluginRequest(versionId), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, installResp.StatusCode);
     }
@@ -456,7 +456,7 @@ public class PluginRepositoryEndpointTests
             $"install_noexist_{Guid.NewGuid():N}@test.com");
 
         var installResp = await client.PostAsJsonAsync("/api/plugins/install",
-            new InstallPluginRequest(Guid.NewGuid()));
+            new InstallPluginRequest(Guid.NewGuid()), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, installResp.StatusCode);
     }
@@ -492,22 +492,22 @@ public class PluginRepositoryEndpointTests
         using var client = await CreateAuthClientWithHandler(handler, $"uninstall_{runId}@test.com");
 
         var createResp = await client.PostAsJsonAsync("/api/plugin-repos",
-            new AddRepositoryRequest($"uni-{runId}", "uni-repo", DisplayName: "Uninstall Repo"));
-        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>();
+            new AddRepositoryRequest($"uni-{runId}", "uni-repo", DisplayName: "Uninstall Repo"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<PluginRepositoryResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null);
+        await client.PostAsync($"/api/plugin-repos/{created!.Id}/sync", null, TestContext.Current.CancellationToken);
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<Mone.Infrastructure.Data.MoneDbContext>();
         var versionId = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
             .SingleAsync(db.PluginManifests
                 .Where(m => m.RepositoryId == created.Id && m.Name == pluginName)
-                .Select(m => m.Id));
+                .Select(m => m.Id), TestContext.Current.CancellationToken);
 
-        await client.PostAsJsonAsync("/api/plugins/install", new InstallPluginRequest(versionId));
+        await client.PostAsJsonAsync("/api/plugins/install", new InstallPluginRequest(versionId), cancellationToken: TestContext.Current.CancellationToken);
 
         var uninstallResp = await client.PostAsJsonAsync("/api/plugins/uninstall",
-            new UninstallPluginRequest(pluginName));
+            new UninstallPluginRequest(pluginName), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, uninstallResp.StatusCode);
     }
 
@@ -520,7 +520,7 @@ public class PluginRepositoryEndpointTests
     {
         using var client = _fixture.Factory.CreateClient();
 
-        var response = await client.GetAsync("/api/plugin-repos");
+        var response = await client.GetAsync("/api/plugin-repos", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -529,7 +529,7 @@ public class PluginRepositoryEndpointTests
     {
         using var client = _fixture.Factory.CreateClient();
 
-        var response = await client.GetAsync("/api/plugins");
+        var response = await client.GetAsync("/api/plugins", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -555,10 +555,10 @@ public class PluginRepositoryEndpointTests
 
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, "ValidPass1!"));
+        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, "ValidPass1!"), TestContext.Current.CancellationToken);
         await _fixture.GrantSuperAdminAsync(email);
-        var loginResp = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "ValidPass1!"));
-        var token = await loginResp.Content.ReadFromJsonAsync<TokenResponse>();
+        var loginResp = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "ValidPass1!"), TestContext.Current.CancellationToken);
+        var token = await loginResp.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: TestContext.Current.CancellationToken);
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token!.Token);
 

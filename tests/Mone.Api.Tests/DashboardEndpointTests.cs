@@ -36,12 +36,12 @@ public class DashboardEndpointTests
             UpdatedAt = DateTimeOffset.UtcNow
         };
         db.Hosts.Add(disabledHost);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/dashboard/summary");
+        var response = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var summary = await response.Content.ReadFromJsonAsync<DashboardSummaryResponse>();
+        var summary = await response.Content.ReadFromJsonAsync<DashboardSummaryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(summary);
         Assert.True(summary.TotalHosts >= 0);
     }
@@ -89,19 +89,19 @@ public class DashboardEndpointTests
                 PreviousStatus = MonitoringStatus.Unknown,
                 CurrentStatus = MonitoringStatus.Unhealthy
             });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/dashboard/summary");
+        var response = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
 
         if (response.StatusCode == HttpStatusCode.InternalServerError)
         {
-            var body = await response.Content.ReadAsStringAsync();
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Fail($"Server returned 500: {body}");
         }
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var summary = await response.Content.ReadFromJsonAsync<DashboardSummaryResponse>();
+        var summary = await response.Content.ReadFromJsonAsync<DashboardSummaryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(summary);
         Assert.True(summary.TotalHosts >= 4);
         Assert.True(summary.Healthy >= 1);
@@ -114,7 +114,7 @@ public class DashboardEndpointTests
     public async Task GetSummary_WorstCasePerHost_UsesWorstChecker()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"dash_worst_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"dash_worst_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         using var scope = _fixture.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MoneDbContext>();
@@ -141,12 +141,12 @@ public class DashboardEndpointTests
                 PreviousStatus = MonitoringStatus.Unknown,
                 CurrentStatus = MonitoringStatus.Unhealthy
             });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/dashboard/summary");
+        var response = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var summary = await response.Content.ReadFromJsonAsync<DashboardSummaryResponse>();
+        var summary = await response.Content.ReadFromJsonAsync<DashboardSummaryResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(summary);
         Assert.True(summary.Unhealthy >= 1, "Host with one healthy and one unhealthy checker should count as unhealthy");
     }
@@ -157,7 +157,7 @@ public class DashboardEndpointTests
         var client = _fixture.Factory.CreateClient();
         using var _ = client;
 
-        var response = await client.GetAsync("/api/dashboard/summary");
+        var response = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

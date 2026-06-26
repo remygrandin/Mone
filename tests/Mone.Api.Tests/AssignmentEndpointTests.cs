@@ -16,11 +16,11 @@ public class AssignmentEndpointTests
     private async Task<(HttpClient Client, Guid HostId)> SetupHostAsync()
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"assign_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"assign_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var resp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"assign-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await resp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"assign-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var host = await resp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         return (client, host!.Id);
     }
 
@@ -31,11 +31,11 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var assignment = await response.Content.ReadFromJsonAsync<ProbeAssignmentResponse>();
+        var assignment = await response.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(assignment);
         Assert.Equal(hostId, assignment.HostId);
         Assert.Equal("ping", assignment.ProbePluginId);
@@ -48,12 +48,12 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/hosts/{hostId}/probes");
+        var response = await client.GetAsync($"/api/hosts/{hostId}/probes", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var assignments = await response.Content.ReadFromJsonAsync<ProbeAssignmentResponse[]>();
+        var assignments = await response.Content.ReadFromJsonAsync<ProbeAssignmentResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(assignments);
         Assert.Single(assignments);
     }
@@ -65,11 +65,11 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{hostId}/checkers",
-            new CreateCheckerAssignmentRequest("threshold", "threshold"));
+            new CreateCheckerAssignmentRequest("threshold", "threshold"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var assignment = await response.Content.ReadFromJsonAsync<CheckerAssignmentResponse>();
+        var assignment = await response.Content.ReadFromJsonAsync<CheckerAssignmentResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(assignment);
         Assert.Equal(hostId, assignment.HostId);
         Assert.Equal("threshold", assignment.CheckerPluginId);
@@ -82,14 +82,14 @@ public class AssignmentEndpointTests
         using var _ = client;
 
         var createResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
-        var assignment = await createResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>();
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
+        var assignment = await createResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleteResp = await client.DeleteAsync($"/api/hosts/{hostId}/probes/{assignment!.Id}");
+        var deleteResp = await client.DeleteAsync($"/api/hosts/{hostId}/probes/{assignment!.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
 
-        var listResp = await client.GetAsync($"/api/hosts/{hostId}/probes");
-        var remaining = await listResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse[]>();
+        var listResp = await client.GetAsync($"/api/hosts/{hostId}/probes", TestContext.Current.CancellationToken);
+        var remaining = await listResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Empty(remaining!);
     }
 }

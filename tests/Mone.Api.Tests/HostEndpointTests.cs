@@ -17,14 +17,14 @@ public class HostEndpointTests
     public async Task CreateHost_ValidData_Returns201()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_create_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_create_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var response = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"host-{Guid.NewGuid():N}", "192.168.1.1"));
+            new CreateHostRequest($"host-{Guid.NewGuid():N}", "192.168.1.1"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var host = await response.Content.ReadFromJsonAsync<HostResponse>();
+        var host = await response.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(host);
         Assert.NotEqual(Guid.Empty, host.Id);
     }
@@ -33,19 +33,19 @@ public class HostEndpointTests
     public async Task GetHost_ById_ReturnsHostWithTags()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_get_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_get_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var tagResp = await client.PostAsJsonAsync("/api/tags", new CreateTagRequest($"tag-{Guid.NewGuid():N}"));
-        var tag = await tagResp.Content.ReadFromJsonAsync<TagResponse>();
+        var tagResp = await client.PostAsJsonAsync("/api/tags", new CreateTagRequest($"tag-{Guid.NewGuid():N}"), cancellationToken: TestContext.Current.CancellationToken);
+        var tag = await tagResp.Content.ReadFromJsonAsync<TagResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"host-{Guid.NewGuid():N}", "10.0.0.1", true, [tag!.Id]));
-        var created = await createResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"host-{Guid.NewGuid():N}", "10.0.0.1", true, [tag!.Id]), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var getResp = await client.GetAsync($"/api/hosts/{created!.Id}");
+        var getResp = await client.GetAsync($"/api/hosts/{created!.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
 
-        var host = await getResp.Content.ReadFromJsonAsync<HostResponse>();
+        var host = await getResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(host);
         Assert.Single(host.Tags);
     }
@@ -54,15 +54,15 @@ public class HostEndpointTests
     public async Task ListHosts_ReturnsAll()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_list_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_list_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"list-host-{Guid.NewGuid():N}", "10.0.0.1"));
+            new CreateHostRequest($"list-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/hosts");
+        var response = await client.GetAsync("/api/hosts", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var hosts = await response.Content.ReadFromJsonAsync<HostResponse[]>();
+        var hosts = await response.Content.ReadFromJsonAsync<HostResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(hosts);
         Assert.NotEmpty(hosts);
     }
@@ -71,20 +71,20 @@ public class HostEndpointTests
     public async Task ListHosts_WithTagFilter_ReturnsMatching()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_filter_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_filter_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var tagName = $"filter-{Guid.NewGuid():N}";
-        var tagResp = await client.PostAsJsonAsync("/api/tags", new CreateTagRequest(tagName));
-        var tag = await tagResp.Content.ReadFromJsonAsync<TagResponse>();
+        var tagResp = await client.PostAsJsonAsync("/api/tags", new CreateTagRequest(tagName), cancellationToken: TestContext.Current.CancellationToken);
+        var tag = await tagResp.Content.ReadFromJsonAsync<TagResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var taggedName = $"tagged-{Guid.NewGuid():N}";
         await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest(taggedName, "10.0.0.1", true, [tag!.Id]));
+            new CreateHostRequest(taggedName, "10.0.0.1", true, [tag!.Id]), cancellationToken: TestContext.Current.CancellationToken);
         await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"untagged-{Guid.NewGuid():N}", "10.0.0.2"));
+            new CreateHostRequest($"untagged-{Guid.NewGuid():N}", "10.0.0.2"), cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/hosts?tags={tagName}");
-        var hosts = await response.Content.ReadFromJsonAsync<HostResponse[]>();
+        var response = await client.GetAsync($"/api/hosts?tags={tagName}", TestContext.Current.CancellationToken);
+        var hosts = await response.Content.ReadFromJsonAsync<HostResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(hosts);
         Assert.All(hosts, h => Assert.Contains(h.Tags, t => t.Name == tagName));
@@ -94,19 +94,19 @@ public class HostEndpointTests
     public async Task UpdateHost_ValidData_Returns200()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_update_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_update_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"update-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var created = await createResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"update-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var newName = $"updated-{Guid.NewGuid():N}";
         var updateResp = await client.PutAsJsonAsync($"/api/hosts/{created!.Id}",
-            new UpdateHostRequest(newName, "10.0.0.2", false));
+            new UpdateHostRequest(newName, "10.0.0.2", false), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, updateResp.StatusCode);
 
-        var updated = await updateResp.Content.ReadFromJsonAsync<HostResponse>();
+        var updated = await updateResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(newName, updated!.Name);
         Assert.False(updated.Enabled);
     }
@@ -115,16 +115,16 @@ public class HostEndpointTests
     public async Task DeleteHost_Returns204()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_del_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_del_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"del-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var created = await createResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"del-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleteResp = await client.DeleteAsync($"/api/hosts/{created!.Id}");
+        var deleteResp = await client.DeleteAsync($"/api/hosts/{created!.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
 
-        var getResp = await client.GetAsync($"/api/hosts/{created.Id}");
+        var getResp = await client.GetAsync($"/api/hosts/{created.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, getResp.StatusCode);
     }
 
@@ -132,12 +132,12 @@ public class HostEndpointTests
     public async Task CreateHost_DuplicateName_Returns409()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"host_dup_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"host_dup_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var name = $"dup-host-{Guid.NewGuid():N}";
-        await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.1"));
+        await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.2"));
+        var response = await client.PostAsJsonAsync("/api/hosts", new CreateHostRequest(name, "10.0.0.2"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 }

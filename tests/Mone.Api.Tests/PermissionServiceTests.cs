@@ -46,7 +46,7 @@ public class PermissionServiceTests
         };
         role.Permissions.Add(new RolePermissionEntity { RoleId = role.Id, Resource = resource, Level = level });
         db.MoneRoles.Add(role);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         return role.Id;
     }
 
@@ -75,10 +75,10 @@ public class PermissionServiceTests
         });
         var host = NewHost();
         db.Hosts.Add(host);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var svc = new PermissionService(db, new ScopeResolver(db));
-        var level = await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(host.Id));
+        var level = await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(host.Id), TestContext.Current.CancellationToken);
 
         Assert.Equal(PermissionLevel.Manage, level);
     }
@@ -104,14 +104,14 @@ public class PermissionServiceTests
             Id = Guid.NewGuid(), UserId = userId, RoleId = roleId,
             ScopeType = ScopeType.Group, ScopeId = group.Id, CreatedAt = DateTimeOffset.UtcNow
         });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var svc = new PermissionService(db, new ScopeResolver(db));
 
         Assert.Equal(PermissionLevel.Manage,
-            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(hostIn.Id)));
+            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(hostIn.Id), TestContext.Current.CancellationToken));
         Assert.Equal(PermissionLevel.None,
-            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(hostOut.Id)));
+            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(hostOut.Id), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -135,14 +135,14 @@ public class PermissionServiceTests
             Id = Guid.NewGuid(), UserId = userId, RoleId = roleId,
             ScopeType = ScopeType.Tag, ScopeId = tag.Id, CreatedAt = DateTimeOffset.UtcNow
         });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var svc = new PermissionService(db, new ScopeResolver(db));
 
         Assert.Equal(PermissionLevel.View,
-            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Monitoring, ScopeTarget.Host(tagged.Id)));
+            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Monitoring, ScopeTarget.Host(tagged.Id), TestContext.Current.CancellationToken));
         Assert.Equal(PermissionLevel.None,
-            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Monitoring, ScopeTarget.Host(untagged.Id)));
+            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Monitoring, ScopeTarget.Host(untagged.Id), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -161,13 +161,13 @@ public class PermissionServiceTests
             Id = Guid.NewGuid(), UserId = userId, RoleId = roleId,
             ScopeType = ScopeType.Group, ScopeId = group.Id, CreatedAt = DateTimeOffset.UtcNow
         });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var svc = new PermissionService(db, new ScopeResolver(db));
 
         // A collection route (Global target) must ignore the group-scoped grant.
         Assert.Equal(PermissionLevel.None,
-            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Global));
+            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Global, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -190,12 +190,12 @@ public class PermissionServiceTests
         db.UserRoleAssignments.AddRange(
             new UserRoleAssignmentEntity { Id = Guid.NewGuid(), UserId = userId, RoleId = viewRole, ScopeType = ScopeType.Global, ScopeId = null, CreatedAt = DateTimeOffset.UtcNow },
             new UserRoleAssignmentEntity { Id = Guid.NewGuid(), UserId = userId, RoleId = manageRole, ScopeType = ScopeType.Group, ScopeId = group.Id, CreatedAt = DateTimeOffset.UtcNow });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var svc = new PermissionService(db, new ScopeResolver(db));
 
         Assert.Equal(PermissionLevel.Manage,
-            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(host.Id)));
+            await svc.GetEffectiveLevelAsync(userId, PermissionResource.Hosts, ScopeTarget.Host(host.Id), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -214,10 +214,10 @@ public class PermissionServiceTests
             Id = Guid.NewGuid(), UserId = userId, RoleId = hostsRole,
             ScopeType = ScopeType.Group, ScopeId = group.Id, CreatedAt = DateTimeOffset.UtcNow
         });
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var svc = new PermissionService(db, new ScopeResolver(db));
-        var caps = await svc.GetCapabilitiesAsync(userId);
+        var caps = await svc.GetCapabilitiesAsync(userId, TestContext.Current.CancellationToken);
 
         // Even though the grant is scoped, the coarse capability map reports it (used for nav gating).
         Assert.True(caps.TryGetValue(PermissionResource.Hosts, out var level));

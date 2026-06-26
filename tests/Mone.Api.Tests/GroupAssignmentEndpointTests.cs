@@ -23,35 +23,35 @@ public class GroupAssignmentEndpointTests
     private async Task<(HttpClient Client, Guid HostId)> CreateClientAndHostAsync()
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"ga_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"ga_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var resp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"host-{Guid.NewGuid():N}", "10.0.0.1"));
+            new CreateHostRequest($"host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
         resp.EnsureSuccessStatusCode();
-        var host = await resp.Content.ReadFromJsonAsync<HostResponse>();
+        var host = await resp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         return (client, host!.Id);
     }
 
     private async Task<HostGroupResponse> CreateGroupAsync(HttpClient client, string? name = null, Guid? parentId = null)
     {
         var request = new CreateHostGroupRequest(name ?? $"grp-{Guid.NewGuid():N}", null, parentId);
-        var resp = await client.PostAsJsonAsync("/api/host-groups", request);
+        var resp = await client.PostAsJsonAsync("/api/host-groups", request, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-        return (await resp.Content.ReadFromJsonAsync<HostGroupResponse>())!;
+        return (await resp.Content.ReadFromJsonAsync<HostGroupResponse>(cancellationToken: TestContext.Current.CancellationToken))!;
     }
 
     private async Task AddMemberAsync(HttpClient client, Guid groupId, Guid hostId)
     {
         var resp = await client.PostAsJsonAsync($"/api/host-groups/{groupId}/members",
-            new AddGroupMemberRequest(hostId));
+            new AddGroupMemberRequest(hostId), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
     }
 
     private async Task<EffectiveAssignmentsDto> GetEffectiveAssignmentsAsync(HttpClient client, Guid hostId)
     {
-        var resp = await client.GetAsync($"/api/hosts/{hostId}/effective-assignments");
+        var resp = await client.GetAsync($"/api/hosts/{hostId}/effective-assignments", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        return (await resp.Content.ReadFromJsonAsync<EffectiveAssignmentsDto>(JsonOpts))!;
+        return (await resp.Content.ReadFromJsonAsync<EffectiveAssignmentsDto>(JsonOpts, TestContext.Current.CancellationToken))!;
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -85,7 +85,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, child.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{parent.Id}/probes",
-            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -102,7 +102,7 @@ public class GroupAssignmentEndpointTests
         using var _ = client;
 
         var assignResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/5 * * * *", TargetAddressOverride: "192.168.1.99"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/5 * * * *", TargetAddressOverride: "192.168.1.99"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -121,9 +121,9 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
         Assert.Equal(2, effective.Probes.Length);
@@ -141,7 +141,7 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/checkers",
-            new CreateCheckerAssignmentRequest("cpu", "cpu"));
+            new CreateCheckerAssignmentRequest("cpu", "cpu"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -161,12 +161,12 @@ public class GroupAssignmentEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
 
         var before = await GetEffectiveAssignmentsAsync(client, hostId);
         Assert.Single(before.Probes);
 
-        var removeResp = await client.DeleteAsync($"/api/host-groups/{group.Id}/members/{hostId}");
+        var removeResp = await client.DeleteAsync($"/api/host-groups/{group.Id}/members/{hostId}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, removeResp.StatusCode);
 
         var after = await GetEffectiveAssignmentsAsync(client, hostId);

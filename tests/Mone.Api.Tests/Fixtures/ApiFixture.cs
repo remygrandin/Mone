@@ -35,7 +35,7 @@ public sealed class ApiFixture : IAsyncLifetime
 
     private string NatsUrl => $"nats://localhost:{_nats.GetMappedPublicPort(4222)}";
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _nats = new ContainerBuilder()
             .WithImage("nats:latest")
@@ -81,16 +81,17 @@ public sealed class ApiFixture : IAsyncLifetime
 
     public async Task<HttpClient> CreateAuthenticatedClientAsync(
         string email = "test@example.com",
-        string password = "Test1234!")
+        string password = "Test1234!",
+        CancellationToken cancellationToken = default)
     {
         var client = _factory.CreateClient();
 
-        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, password));
+        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, password), cancellationToken: cancellationToken);
 
         await GrantSuperAdminAsync(email);
 
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
-        var token = await loginResponse.Content.ReadFromJsonAsync<TokenResponse>();
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password), cancellationToken: cancellationToken);
+        var token = await loginResponse.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.Token);
         return client;
@@ -102,13 +103,14 @@ public sealed class ApiFixture : IAsyncLifetime
     /// negative tests (the standard <see cref="CreateAuthenticatedClientAsync"/> grants SuperAdmin).
     /// </summary>
     public async Task<(HttpClient Client, string UserId)> CreatePlainClientAsync(
-        string email, string password = "Test1234!")
+        string email, string password = "Test1234!",
+        CancellationToken cancellationToken = default)
     {
         var client = _factory.CreateClient();
-        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, password));
+        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, password), cancellationToken: cancellationToken);
 
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
-        var token = await loginResponse.Content.ReadFromJsonAsync<TokenResponse>();
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password), cancellationToken: cancellationToken);
+        var token = await loginResponse.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: cancellationToken);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.Token);
 
         using var scope = _factory.Services.CreateScope();
@@ -133,7 +135,7 @@ public sealed class ApiFixture : IAsyncLifetime
 
     public WebApplicationFactory<Program> Factory => _factory;
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         Client.Dispose();
         await _factory.DisposeAsync();

@@ -17,11 +17,11 @@ public class MaintenanceEndpointTests
     private async Task<(HttpClient client, Guid hostId)> CreateHostAsync(string emailPrefix)
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"{emailPrefix}_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"{emailPrefix}_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"maint-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"maint-host-{Guid.NewGuid():N}", "10.0.0.1"), TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         return (client, host!.Id);
     }
 
@@ -33,11 +33,11 @@ public class MaintenanceEndpointTests
 
         var startsAt = DateTimeOffset.UtcNow;
         var response = await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, startsAt, 5));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, startsAt, 5), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var window = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse>();
+        var window = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(window);
         Assert.NotEqual(Guid.Empty, window.Id);
         Assert.Equal(hostId, window.HostId);
@@ -53,10 +53,10 @@ public class MaintenanceEndpointTests
         using var c = client;
 
         var response = await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 0));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 0), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var window = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse>();
+        var window = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(window);
         Assert.Null(window.ExpiresAt);
     }
@@ -68,10 +68,10 @@ public class MaintenanceEndpointTests
         using var c = client;
 
         var response = await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 30, "0 2 * * *"));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 30, "0 2 * * *"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var window = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse>();
+        var window = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(window);
         Assert.Equal(MaintenanceWindowKind.RecurringCron, window.Kind);
         Assert.Equal("0 2 * * *", window.Cron);
@@ -85,7 +85,7 @@ public class MaintenanceEndpointTests
         using var c = client;
 
         var response = await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 30, "not-a-cron"));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 30, "not-a-cron"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -98,7 +98,7 @@ public class MaintenanceEndpointTests
         using var c = client;
 
         var response = await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 0, "0 2 * * *"));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 0, "0 2 * * *"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -108,10 +108,10 @@ public class MaintenanceEndpointTests
     public async Task CreateWindow_UnknownHost_Returns404()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"maint_404create_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"maint_404create_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{Guid.NewGuid()}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 5));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 5), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -120,9 +120,9 @@ public class MaintenanceEndpointTests
     public async Task ListWindows_UnknownHost_Returns404()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"maint_404list_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"maint_404list_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/hosts/{Guid.NewGuid()}/maintenance");
+        var response = await client.GetAsync($"/api/hosts/{Guid.NewGuid()}/maintenance", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -134,14 +134,14 @@ public class MaintenanceEndpointTests
         using var c = client;
 
         await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 5));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 5), TestContext.Current.CancellationToken);
         await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 30, "0 2 * * *"));
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.RecurringCron, null, 30, "0 2 * * *"), TestContext.Current.CancellationToken);
 
-        var response = await c.GetAsync($"/api/hosts/{hostId}/maintenance");
+        var response = await c.GetAsync($"/api/hosts/{hostId}/maintenance", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var windows = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse[]>();
+        var windows = await response.Content.ReadFromJsonAsync<MaintenanceWindowResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(windows);
         Assert.Equal(2, windows.Length);
         Assert.All(windows, w => Assert.Equal(hostId, w.HostId));
@@ -154,14 +154,14 @@ public class MaintenanceEndpointTests
         using var c = client;
 
         var createResp = await c.PostAsJsonAsync($"/api/hosts/{hostId}/maintenance",
-            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 5));
-        var created = await createResp.Content.ReadFromJsonAsync<MaintenanceWindowResponse>();
+            new CreateMaintenanceWindowRequest(MaintenanceWindowKind.Manual, DateTimeOffset.UtcNow, 5), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<MaintenanceWindowResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleteResp = await c.DeleteAsync($"/api/hosts/{hostId}/maintenance/{created!.Id}");
+        var deleteResp = await c.DeleteAsync($"/api/hosts/{hostId}/maintenance/{created!.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
 
-        var listResp = await c.GetAsync($"/api/hosts/{hostId}/maintenance");
-        var windows = await listResp.Content.ReadFromJsonAsync<MaintenanceWindowResponse[]>();
+        var listResp = await c.GetAsync($"/api/hosts/{hostId}/maintenance", TestContext.Current.CancellationToken);
+        var windows = await listResp.Content.ReadFromJsonAsync<MaintenanceWindowResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(windows);
         Assert.DoesNotContain(windows, w => w.Id == created.Id);
     }

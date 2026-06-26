@@ -19,11 +19,11 @@ public class AuthEndpointTests
     {
         var client = _fixture.Factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/register",
-            new RegisterRequest($"register201_{Guid.NewGuid():N}@test.com", "ValidPass1!"));
+            new RegisterRequest($"register201_{Guid.NewGuid():N}@test.com", "ValidPass1!"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var user = await response.Content.ReadFromJsonAsync<UserResponse>();
+        var user = await response.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(user);
         Assert.NotEmpty(user.Id);
     }
@@ -35,12 +35,12 @@ public class AuthEndpointTests
         var email = $"login_ok_{Guid.NewGuid():N}@test.com";
         const string password = "ValidPass1!";
 
-        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, password));
-        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
+        await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(email, password), cancellationToken: TestContext.Current.CancellationToken);
+        var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
+        var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(token);
         Assert.NotEmpty(token.Token);
     }
@@ -50,7 +50,7 @@ public class AuthEndpointTests
     {
         var client = _fixture.Factory.CreateClient();
         var response = await client.PostAsJsonAsync("/api/auth/login",
-            new LoginRequest("nobody@test.com", "WrongPass1!"));
+            new LoginRequest("nobody@test.com", "WrongPass1!"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -59,12 +59,12 @@ public class AuthEndpointTests
     public async Task Me_WithValidToken_ReturnsUserInfo()
     {
         var email = $"me_ok_{Guid.NewGuid():N}@test.com";
-        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!");
+        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/auth/me");
+        var response = await client.GetAsync("/api/auth/me", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var user = await response.Content.ReadFromJsonAsync<UserResponse>();
+        var user = await response.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(user);
         Assert.Equal(email, user.Email);
         client.Dispose();
@@ -74,7 +74,7 @@ public class AuthEndpointTests
     public async Task Me_WithoutToken_Returns401()
     {
         var client = _fixture.Factory.CreateClient();
-        var response = await client.GetAsync("/api/auth/me");
+        var response = await client.GetAsync("/api/auth/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

@@ -20,7 +20,7 @@ public class NatsIntegrationTests : IAsyncLifetime
 
     public NatsIntegrationTests(NatsContainerFixture natsFixture) => _natsFixture = natsFixture;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         var builder = Host.CreateDefaultBuilder()
             .ConfigureServices(services => services.AddMoneMessaging(_natsFixture.NatsUrl));
@@ -31,7 +31,7 @@ public class NatsIntegrationTests : IAsyncLifetime
         _js = _host.Services.GetRequiredService<INatsJSContext>();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _host.StopAsync();
         _host.Dispose();

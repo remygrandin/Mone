@@ -34,10 +34,10 @@ public class OpenApiDocumentTests
     public async Task OpenApiDocument_IsTagGroupedSummarizedAndProblemDetailsTyped()
     {
         // (a) Anonymous GET /openapi/v1.json returns 200 and parses as JSON.
-        var response = await _fixture.Client.GetAsync("/openapi/v1.json");
+        var response = await _fixture.Client.GetAsync("/openapi/v1.json", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var body = await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
 

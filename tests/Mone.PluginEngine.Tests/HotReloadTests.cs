@@ -2,7 +2,6 @@ using Mone.Contracts.Models;
 using Mone.Contracts.Plugins;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Mone.PluginEngine.Tests;
 

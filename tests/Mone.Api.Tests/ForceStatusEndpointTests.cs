@@ -24,17 +24,17 @@ public class ForceStatusEndpointTests
     private async Task<(HttpClient Client, Guid HostId, Guid AssignmentId)> SetupHostWithCheckerAsync(string suffix)
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"force_{suffix}_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"force_{suffix}_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"force-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"force-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         var hostId = host!.Id;
 
         var checkerResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/checkers",
-            new CreateCheckerAssignmentRequest("threshold", "threshold"));
+            new CreateCheckerAssignmentRequest("threshold", "threshold"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, checkerResp.StatusCode);
-        var checkerAssignment = await checkerResp.Content.ReadFromJsonAsync<CheckerAssignmentResponse>();
+        var checkerAssignment = await checkerResp.Content.ReadFromJsonAsync<CheckerAssignmentResponse>(cancellationToken: TestContext.Current.CancellationToken);
         var assignmentId = checkerAssignment!.Id;
 
         return (client, hostId, assignmentId);
@@ -56,10 +56,10 @@ public class ForceStatusEndpointTests
                 DeliverPolicy = ConsumerConfigDeliverPolicy.New,
                 AckPolicy = ConsumerConfigAckPolicy.Explicit,
                 FilterSubject = "status.changes.>"
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         var forceResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/status/force",
-            new ForceStatusRequest(assignmentId, MonitoringStatus.Unhealthy));
+            new ForceStatusRequest(assignmentId, MonitoringStatus.Unhealthy), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Accepted, forceResp.StatusCode);
 
         // Read one message off the stream with a bounded wait.
@@ -72,9 +72,9 @@ public class ForceStatusEndpointTests
         await msg.AckAsync(cancellationToken: cts.Token);
 
         // Server rollup reflects the forced status (default ErrorPolicyThreshold=1 => 1 error => Unhealthy).
-        var rollupResp = await client.GetAsync($"/api/hosts/{hostId}/status/rollup");
+        var rollupResp = await client.GetAsync($"/api/hosts/{hostId}/status/rollup", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, rollupResp.StatusCode);
-        var rollup = await rollupResp.Content.ReadFromJsonAsync<HostStatusRollupResponse>();
+        var rollup = await rollupResp.Content.ReadFromJsonAsync<HostStatusRollupResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(rollup);
         Assert.Equal(MonitoringStatus.Unhealthy, rollup.Status);
         Assert.Equal(1, rollup.ErrorCount);
@@ -97,7 +97,7 @@ public class ForceStatusEndpointTests
         using var _ = client;
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{hostId}/status/force",
-            new { assignmentId = Guid.NewGuid(), status = 999 });
+            new { assignmentId = Guid.NewGuid(), status = 999 }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -106,15 +106,15 @@ public class ForceStatusEndpointTests
     public async Task ForceStatus_WithUnknownChecker_Returns400()
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"force_unknown_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"force_unknown_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
         using var _ = client;
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"force-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"force-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var response = await client.PostAsJsonAsync($"/api/hosts/{host!.Id}/status/force",
-            new ForceStatusRequest(Guid.NewGuid(), MonitoringStatus.Unhealthy));
+            new ForceStatusRequest(Guid.NewGuid(), MonitoringStatus.Unhealthy), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

@@ -64,13 +64,13 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30,"retries":3}"""));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30,"retries":3}"""), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
-        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
+        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         var overrideResp = await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/probes/{assignment!.Id}",
-            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":60}""", IsDisabled = false });
+            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":60}""", IsDisabled = false }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, overrideResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -90,13 +90,13 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
-        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
+        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         var overrideResp = await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/probes/{assignment!.Id}",
-            new UpsertOverrideRequest { IsDisabled = true });
+            new UpsertOverrideRequest { IsDisabled = true }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, overrideResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -113,15 +113,15 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30}"""));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30}"""), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
-        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
+        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/probes/{assignment!.Id}",
-            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":99}""", IsDisabled = false });
+            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":99}""", IsDisabled = false }, cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleteResp = await client.DeleteAsync($"/api/hosts/{hostId}/overrides/probes/{assignment.Id}");
+        var deleteResp = await client.DeleteAsync($"/api/hosts/{hostId}/overrides/probes/{assignment.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -137,13 +137,13 @@ public class AssignmentOverrideEndpointTests
         using var _ = client;
 
         var assignResp = await client.PostAsJsonAsync($"/api/hosts/{hostId}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
-        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
+        var assignment = await assignResp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         var overrideResp = await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/probes/{assignment!.Id}",
-            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":60}""" });
+            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":60}""" }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, overrideResp.StatusCode);
     }
 
@@ -157,13 +157,13 @@ public class AssignmentOverrideEndpointTests
         await AddMemberAsync(client, group.Id, hostId);
 
         var assignResp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/checkers",
-            new CreateCheckerAssignmentRequest("cpu", "cpu", ConfigJson: """{"threshold":80,"interval":60}"""));
+            new CreateCheckerAssignmentRequest("cpu", "cpu", ConfigJson: """{"threshold":80,"interval":60}"""), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
-        var assignment = await assignResp.Content.ReadFromJsonAsync<CheckerAssignmentResponse>(JsonOpts);
+        var assignment = await assignResp.Content.ReadFromJsonAsync<CheckerAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         var overrideResp = await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/checkers/{assignment!.Id}",
-            new UpsertOverrideRequest { ConfigJsonOverride = """{"threshold":95}""", IsDisabled = false });
+            new UpsertOverrideRequest { ConfigJsonOverride = """{"threshold":95}""", IsDisabled = false }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, overrideResp.StatusCode);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
@@ -184,30 +184,30 @@ public class AssignmentOverrideEndpointTests
 
         // Probe 1: will be config-overridden
         var probe1Resp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30}"""));
+            new CreateProbeAssignmentRequest("ping", $"ping-{Guid.NewGuid():N}", "*/5 * * * *", ConfigJson: """{"timeout":30}"""), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, probe1Resp.StatusCode);
-        var probe1 = await probe1Resp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
+        var probe1 = await probe1Resp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         // Probe 2: will be disabled
         var probe2Resp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"));
+            new CreateProbeAssignmentRequest("http", $"http-{Guid.NewGuid():N}", "*/10 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, probe2Resp.StatusCode);
-        var probe2 = await probe2Resp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts);
+        var probe2 = await probe2Resp.Content.ReadFromJsonAsync<ProbeAssignmentResponse>(JsonOpts, cancellationToken: TestContext.Current.CancellationToken);
 
         // Probe 3: untouched — no override
         var probe3Resp = await client.PostAsJsonAsync($"/api/host-groups/{group.Id}/probes",
-            new CreateProbeAssignmentRequest("dns", $"dns-{Guid.NewGuid():N}", "*/15 * * * *"));
+            new CreateProbeAssignmentRequest("dns", $"dns-{Guid.NewGuid():N}", "*/15 * * * *"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, probe3Resp.StatusCode);
 
         // Override probe 1 config
         await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/probes/{probe1!.Id}",
-            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":99}""", IsDisabled = false });
+            new UpsertOverrideRequest { ConfigJsonOverride = """{"timeout":99}""", IsDisabled = false }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Disable probe 2
         await client.PutAsJsonAsync(
             $"/api/hosts/{hostId}/overrides/probes/{probe2!.Id}",
-            new UpsertOverrideRequest { IsDisabled = true });
+            new UpsertOverrideRequest { IsDisabled = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         var effective = await GetEffectiveAssignmentsAsync(client, hostId);
 

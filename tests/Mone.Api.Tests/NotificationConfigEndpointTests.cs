@@ -17,16 +17,16 @@ public class NotificationConfigEndpointTests
     public async Task CreateConfig_Returns201_WithValidResponse()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"notif_create_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"notif_create_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var request = new CreateNotificationConfigRequest(
             "SlackNotification", "{\"webhook_url\":\"https://hooks.slack.com/test\"}", true, "global");
 
-        var response = await client.PostAsJsonAsync("/api/notifications/configs", request);
+        var response = await client.PostAsJsonAsync("/api/notifications/configs", request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var config = await response.Content.ReadFromJsonAsync<NotificationConfigResponse>();
+        var config = await response.Content.ReadFromJsonAsync<NotificationConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(config);
         Assert.NotEqual(Guid.Empty, config.Id);
         Assert.Equal("SlackNotification", config.PluginId);
@@ -39,16 +39,16 @@ public class NotificationConfigEndpointTests
     public async Task GetConfigs_ReturnsCreatedConfigs()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"notif_list_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"notif_list_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var request = new CreateNotificationConfigRequest("TeamsNotification", null, true, null);
-        await client.PostAsJsonAsync("/api/notifications/configs", request);
+        await client.PostAsJsonAsync("/api/notifications/configs", request, TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/notifications/configs");
+        var response = await client.GetAsync("/api/notifications/configs", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var configs = await response.Content.ReadFromJsonAsync<NotificationConfigResponse[]>();
+        var configs = await response.Content.ReadFromJsonAsync<NotificationConfigResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(configs);
         Assert.Contains(configs, c => c.PluginId == "TeamsNotification");
     }
@@ -57,16 +57,16 @@ public class NotificationConfigEndpointTests
     public async Task GetConfigById_ReturnsConfig()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"notif_getid_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"notif_getid_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/notifications/configs",
-            new CreateNotificationConfigRequest("WebhookNotification", "{\"url\":\"https://example.com\"}", true, "host:abc"));
-        var created = await createResp.Content.ReadFromJsonAsync<NotificationConfigResponse>();
+            new CreateNotificationConfigRequest("WebhookNotification", "{\"url\":\"https://example.com\"}", true, "host:abc"), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<NotificationConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/notifications/configs/{created!.Id}");
+        var response = await client.GetAsync($"/api/notifications/configs/{created!.Id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var config = await response.Content.ReadFromJsonAsync<NotificationConfigResponse>();
+        var config = await response.Content.ReadFromJsonAsync<NotificationConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(created.Id, config!.Id);
         Assert.Equal("WebhookNotification", config.PluginId);
     }
@@ -75,9 +75,9 @@ public class NotificationConfigEndpointTests
     public async Task GetConfigById_NonExistent_Returns404()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"notif_404_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"notif_404_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync($"/api/notifications/configs/{Guid.NewGuid()}");
+        var response = await client.GetAsync($"/api/notifications/configs/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -86,20 +86,20 @@ public class NotificationConfigEndpointTests
     public async Task UpdateConfig_ReturnsUpdatedConfig()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"notif_update_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"notif_update_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/notifications/configs",
-            new CreateNotificationConfigRequest("SlackNotification", "{\"channel\":\"#old\"}", true, null));
-        var created = await createResp.Content.ReadFromJsonAsync<NotificationConfigResponse>();
+            new CreateNotificationConfigRequest("SlackNotification", "{\"channel\":\"#old\"}", true, null), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<NotificationConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
         var updateRequest = new UpdateNotificationConfigRequest(
             "SlackNotification", "{\"channel\":\"#new\"}", false, "global");
 
-        var response = await client.PutAsJsonAsync($"/api/notifications/configs/{created!.Id}", updateRequest);
+        var response = await client.PutAsJsonAsync($"/api/notifications/configs/{created!.Id}", updateRequest, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var updated = await response.Content.ReadFromJsonAsync<NotificationConfigResponse>();
+        var updated = await response.Content.ReadFromJsonAsync<NotificationConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(updated);
         Assert.Equal(created.Id, updated.Id);
         Assert.Equal("{\"channel\":\"#new\"}", updated.ConfigJson);
@@ -111,17 +111,17 @@ public class NotificationConfigEndpointTests
     public async Task DeleteConfig_Returns204()
     {
         using var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"notif_delete_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"notif_delete_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var createResp = await client.PostAsJsonAsync("/api/notifications/configs",
-            new CreateNotificationConfigRequest("TeamsNotification", null, true, null));
-        var created = await createResp.Content.ReadFromJsonAsync<NotificationConfigResponse>();
+            new CreateNotificationConfigRequest("TeamsNotification", null, true, null), TestContext.Current.CancellationToken);
+        var created = await createResp.Content.ReadFromJsonAsync<NotificationConfigResponse>(cancellationToken: TestContext.Current.CancellationToken);
 
-        var deleteResp = await client.DeleteAsync($"/api/notifications/configs/{created!.Id}");
+        var deleteResp = await client.DeleteAsync($"/api/notifications/configs/{created!.Id}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
 
-        var getResp = await client.GetAsync($"/api/notifications/configs/{created.Id}");
+        var getResp = await client.GetAsync($"/api/notifications/configs/{created.Id}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, getResp.StatusCode);
     }
 
@@ -131,7 +131,7 @@ public class NotificationConfigEndpointTests
         var client = _fixture.Factory.CreateClient();
         using var _ = client;
 
-        var response = await client.GetAsync("/api/notifications/configs");
+        var response = await client.GetAsync("/api/notifications/configs", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

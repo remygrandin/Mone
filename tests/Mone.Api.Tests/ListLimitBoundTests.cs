@@ -20,11 +20,11 @@ public class ListLimitBoundTests
     private async Task<(HttpClient client, Guid hostId)> CreateHostAsync(string label)
     {
         var client = await _fixture.CreateAuthenticatedClientAsync(
-            $"{label}_{Guid.NewGuid():N}@test.com", "ValidPass1!");
+            $"{label}_{Guid.NewGuid():N}@test.com", "ValidPass1!", TestContext.Current.CancellationToken);
 
         var hostResp = await client.PostAsJsonAsync("/api/hosts",
-            new CreateHostRequest($"{label}-host-{Guid.NewGuid():N}", "10.0.0.1"));
-        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>();
+            new CreateHostRequest($"{label}-host-{Guid.NewGuid():N}", "10.0.0.1"), cancellationToken: TestContext.Current.CancellationToken);
+        var host = await hostResp.Content.ReadFromJsonAsync<HostResponse>(cancellationToken: TestContext.Current.CancellationToken);
         return (client, host!.Id);
     }
 
@@ -51,13 +51,13 @@ public class ListLimitBoundTests
                     MetadataJson = null
                 });
             }
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var response = await client.GetAsync($"/api/hosts/{hostId}/results?limit=2");
+        var response = await client.GetAsync($"/api/hosts/{hostId}/results?limit=2", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var results = await response.Content.ReadFromJsonAsync<ProbeResultResponse[]>();
+        var results = await response.Content.ReadFromJsonAsync<ProbeResultResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(results);
         Assert.Equal(2, results.Length);
         // Newest two by Timestamp: probe-0 (now) then probe-1 (now-1m).
@@ -88,13 +88,13 @@ public class ListLimitBoundTests
                     MetadataJson = null
                 });
             }
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var response = await client.GetAsync($"/api/hosts/{hostId}/results?limit=0");
+        var response = await client.GetAsync($"/api/hosts/{hostId}/results?limit=0", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var results = await response.Content.ReadFromJsonAsync<ProbeResultResponse[]>();
+        var results = await response.Content.ReadFromJsonAsync<ProbeResultResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(results);
         Assert.Single(results);
         Assert.Equal("probe-0", results[0].ProbeId);
@@ -121,13 +121,13 @@ public class ListLimitBoundTests
                     CurrentStatus = MonitoringStatus.Healthy
                 });
             }
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var response = await client.GetAsync($"/api/hosts/{hostId}/status/history?limit=2");
+        var response = await client.GetAsync($"/api/hosts/{hostId}/status/history?limit=2", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var history = await response.Content.ReadFromJsonAsync<StatusResponse[]>();
+        var history = await response.Content.ReadFromJsonAsync<StatusResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(history);
         Assert.Equal(2, history.Length);
         Assert.Equal("checker-0", history[0].CheckerId);
@@ -160,13 +160,13 @@ public class ListLimitBoundTests
                     CurrentMonitoringStatus = MonitoringStatus.Healthy
                 });
             }
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var response = await client.GetAsync($"/api/notifications?targetId={hostId}&limit=2");
+        var response = await client.GetAsync($"/api/notifications?targetId={hostId}&limit=2", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var audit = await response.Content.ReadFromJsonAsync<NotificationAuditResponse[]>();
+        var audit = await response.Content.ReadFromJsonAsync<NotificationAuditResponse[]>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(audit);
         Assert.Equal(2, audit.Length);
         Assert.Equal("checker-0", audit[0].CheckerId);

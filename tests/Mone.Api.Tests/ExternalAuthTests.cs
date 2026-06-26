@@ -21,10 +21,10 @@ public class ExternalAuthTests
     public async Task Providers_ReturnsEmpty_WhenBothDisabled()
     {
         var client = _fixture.Factory.CreateClient();
-        var response = await client.GetAsync("/api/auth/providers");
+        var response = await client.GetAsync("/api/auth/providers", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var providers = await response.Content.ReadFromJsonAsync<List<AuthProviderResponse>>();
+        var providers = await response.Content.ReadFromJsonAsync<List<AuthProviderResponse>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(providers);
         Assert.Empty(providers);
     }
@@ -44,10 +44,10 @@ public class ExternalAuthTests
             AllowAutoRedirect = false
         });
 
-        var response = await client.GetAsync("/api/auth/providers");
+        var response = await client.GetAsync("/api/auth/providers", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var providers = await response.Content.ReadFromJsonAsync<List<AuthProviderResponse>>();
+        var providers = await response.Content.ReadFromJsonAsync<List<AuthProviderResponse>>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(providers);
         Assert.Contains(providers, p => p.Name == "oidc" && p.LoginUrl == "/api/auth/oidc/login");
     }
@@ -70,7 +70,7 @@ public class ExternalAuthTests
         using var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/auth/ldap/login",
-            new LdapLoginRequest("testuser", "wrongpass"));
+            new LdapLoginRequest("testuser", "wrongpass"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -94,11 +94,11 @@ public class ExternalAuthTests
         using var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/api/auth/ldap/login",
-            new LdapLoginRequest("testuser", "correctpass"));
+            new LdapLoginRequest("testuser", "correctpass"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
+        var token = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(token);
         Assert.NotEmpty(token.Token);
         Assert.True(token.Expires > DateTime.UtcNow);
@@ -123,10 +123,10 @@ public class ExternalAuthTests
         using var client = factory.CreateClient();
 
         await client.PostAsJsonAsync("/api/auth/ldap/login",
-            new LdapLoginRequest("nopw", "ldappass"));
+            new LdapLoginRequest("nopw", "ldappass"), cancellationToken: TestContext.Current.CancellationToken);
 
         var localLoginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            new LoginRequest(ldapEmail, "AnyPassword1!"));
+            new LoginRequest(ldapEmail, "AnyPassword1!"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, localLoginResponse.StatusCode);
     }

@@ -17,12 +17,12 @@ public class ThemePreferenceEndpointTests
     public async Task DefaultThemeIsSystem()
     {
         var email = $"theme_default_{Guid.NewGuid():N}@test.com";
-        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!");
+        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.GetAsync("/api/auth/me");
+        var response = await client.GetAsync("/api/auth/me", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var user = await response.Content.ReadFromJsonAsync<UserResponse>();
+        var user = await response.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(user);
         Assert.Equal("System", user.ThemePreference);
         client.Dispose();
@@ -32,15 +32,15 @@ public class ThemePreferenceEndpointTests
     public async Task PutThenGet_RoundTrips()
     {
         var email = $"theme_roundtrip_{Guid.NewGuid():N}@test.com";
-        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!");
+        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var putResponse = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemeRequest("Dark"));
+        var putResponse = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemeRequest("Dark"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
 
-        var getResponse = await client.GetAsync("/api/auth/me");
+        var getResponse = await client.GetAsync("/api/auth/me", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
-        var user = await getResponse.Content.ReadFromJsonAsync<UserResponse>();
+        var user = await getResponse.Content.ReadFromJsonAsync<UserResponse>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(user);
         Assert.Equal("Dark", user.ThemePreference);
         client.Dispose();
@@ -50,9 +50,9 @@ public class ThemePreferenceEndpointTests
     public async Task InvalidTheme_Returns400()
     {
         var email = $"theme_invalid_{Guid.NewGuid():N}@test.com";
-        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!");
+        var client = await _fixture.CreateAuthenticatedClientAsync(email, "ValidPass1!", TestContext.Current.CancellationToken);
 
-        var response = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemeRequest("Neon"));
+        var response = await client.PutAsJsonAsync("/api/auth/me/theme", new UpdateThemeRequest("Neon"), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         client.Dispose();
