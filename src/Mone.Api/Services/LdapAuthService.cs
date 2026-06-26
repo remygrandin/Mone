@@ -36,26 +36,26 @@ public class LdapAuthService
             if (useSsl)
                 connection.SecureSocketLayer = true;
 
-            await Task.Run(() => connection.Connect(host, port));
+            await connection.ConnectAsync(host, port);
 
             if (!string.IsNullOrEmpty(bindDn))
             {
-                await Task.Run(() => connection.Bind(bindDn, bindPassword));
+                await connection.BindAsync(bindDn, bindPassword);
             }
 
-            var searchResults = await Task.Run(() => connection.Search(
+            var entries = await connection.SearchAsync(
                 baseDn,
                 LdapConnection.ScopeSub,
                 resolvedFilter,
                 new[] { emailAttribute, displayNameAttribute, "dn" },
-                false));
+                false);
 
             LdapEntry? entry = null;
-            await Task.Run(() =>
+            await foreach (var e in entries)
             {
-                if (searchResults.HasMore())
-                    entry = searchResults.Next();
-            });
+                entry = e;
+                break;
+            }
 
             if (entry is null)
             {
@@ -69,11 +69,11 @@ public class LdapAuthService
             if (useSsl)
                 userConnection.SecureSocketLayer = true;
 
-            await Task.Run(() => userConnection.Connect(host, port));
+            await userConnection.ConnectAsync(host, port);
 
             try
             {
-                await Task.Run(() => userConnection.Bind(userDn, password));
+                await userConnection.BindAsync(userDn, password);
             }
             catch (LdapException ex) when (ex.ResultCode == LdapException.InvalidCredentials)
             {
@@ -107,9 +107,36 @@ public class LdapAuthService
     {
         try
         {
-            return entry.GetAttribute(attributeName)?.StringValue;
+            var entryType = entry.GetType();
+            var property = entryType.GetProperty(attributeName, System.Reflection.BindingFlags.IgnoreCase | System.Reflection.BindingFlags.Public);
+            if (property != null)
+            {
+                var value = property.GetValue(entry);
+                return value?.ToString();
+            }
+
+            var method = entryType.GetMethod("GetAttribute", System.Reflection.BindingFlags.IgnoreCase | System.Reflection.BindingFlags.Public, null, new[] { typeof(string) }, null);
+            if (method != null)
+            {
+                var attr = method.Invoke(entry, new object[] { attributeName });
+                if (attr == null)
+                    return null;
+                var stringValuesProperty = attr.GetType().GetProperty("StringValues");
+                if (stringValuesProperty != null)
+                {
+                    var values = (string[]?)stringValuesProperty.GetValue(attr);
+                    return values?.FirstOrDefault();
+                }
+                var stringValueProperty = attr.GetType().GetProperty("StringValue");
+                if (stringValueProperty != null)
+                {
+                    return (string?)stringValueProperty.GetValue(attr);
+                }
+            }
+
+            return null;
         }
-        catch (KeyNotFoundException)
+        catch
         {
             return null;
         }
